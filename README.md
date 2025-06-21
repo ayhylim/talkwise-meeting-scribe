@@ -1,73 +1,88 @@
-# Welcome to your Lovable project
+# Talkwise
 
-## Project info
+**Talkwise** adalah platform AI yang merekam, mentranskripsi, dan meringkas percakapan dalam rapat secara otomatis. Dirancang untuk membantu individu, tim, dan organisasi memahami isi percakapan dengan cepat, Talkwise mengubah meeting menjadi insight yang bisa ditindaklanjuti, dalam waktu singkat dan tanpa gangguan.
 
-**URL**: https://lovable.dev/projects/bb253134-1245-42bf-bc2e-2a9fff2d7939
+---
 
-## How can I edit this code?
+## 📌 Pengertian Proyek
 
-There are several ways of editing your application.
+Talkwise merupakan sebuah solusi berbasis AI yang memungkinkan pengguna untuk:
+- Merekam percakapan rapat (via Zoom, Google Meet, upload manual, dll).
+- Mentranskripsi suara menjadi teks secara otomatis.
+- Meringkas isi percakapan ke dalam bentuk poin-poin penting.
+- (Opsional) Menganalisis peran speaker, sentimen, dan topik pembicaraan.
 
-**Use Lovable**
+Proyek ini dirancang sebagai alat bantu kerja cerdas yang dapat meminimalkan waktu yang dihabiskan untuk mencatat dan merekap hasil rapat, sehingga pengguna dapat lebih fokus pada kolaborasi dan pengambilan keputusan.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/bb253134-1245-42bf-bc2e-2a9fff2d7939) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## 💡 Motivasi Dibalik Talkwise
 
-**Use your preferred IDE**
+Di era kerja remote dan kolaborasi digital, rapat online menjadi bagian dari rutinitas harian. Namun, banyak masalah yang masih belum terpecahkan:
+- Waktu rapat terlalu panjang dan melelahkan.
+- Tidak semua peserta bisa hadir atau fokus penuh.
+- Hasil rapat sering tidak tercatat atau tersebar di banyak tempat.
+- Tidak semua orang mampu menangkap informasi penting dari diskusi verbal yang kompleks.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+**Talkwise hadir untuk menyelesaikan masalah ini** dengan memanfaatkan kekuatan AI untuk memberikan dokumentasi otomatis dan ringkasan yang mudah dipahami dalam hitungan detik.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+---
 
-Follow these steps:
+## 🌍 Visi dan Misi
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### 🔭 **Visi**
+Membantu manusia menangkap dan memahami informasi percakapan lebih baik dari sebelumnya — dengan cepat, ringkas, dan akurat — menggunakan kekuatan AI.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### 🎯 **Misi**
+- Membangun sistem AI yang mampu mentranskripsi dan meringkas percakapan dalam berbagai bahasa.
+- Menyediakan pengalaman pengguna yang mudah digunakan dan tidak mengganggu jalannya rapat.
+- Mengembangkan fitur analisis percakapan berbasis AI: seperti sentimen, topik, peran speaker, dan kesimpulan tindakan (action items).
+- Mendorong efisiensi, transparansi, dan kolaborasi global.
 
-# Step 3: Install the necessary dependencies.
-npm i
+---
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+## 🌐 Target & Manfaat Global
 
-**Edit a file directly in GitHub**
+Talkwise ditujukan untuk memberikan manfaat besar pada skala global:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+| Target Pengguna | Manfaat yang Diberikan |
+|------------------|------------------------|
+| Tim kerja & perusahaan | Dokumentasi otomatis, pengambilan keputusan lebih cepat |
+| Pelajar & edukator | Ringkasan kelas/meeting online, bahan belajar |
+| Peneliti | Analisis wawancara atau diskusi tanpa repot mencatat |
+| Masyarakat umum | Akses informasi yang mudah dipahami dari percakapan panjang |
+| Daerah non-Inggris | Transkripsi dan ringkasan dalam bahasa lokal (multi-language support) |
 
-**Use GitHub Codespaces**
+**Manfaat global jangka panjang:**
+- Memberikan akses terhadap informasi penting meskipun pengguna tidak hadir langsung dalam rapat.
+- Membantu penyandang disabilitas (tunarungu) mendapatkan dokumentasi percakapan.
+- Meningkatkan inklusi digital dan efisiensi kerja di berbagai negara.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## 🚀 Tahap Pengembangan
 
-This project is built with:
+- [ ] UI/UX final menggunakan React.ts + Tailwind.
+- [ ] MVP: Upload audio → transkrip → ringkasan.
+- [ ] Integrasi API OpenAI Whisper dan GPT.
+- [ ] Analisis speaker dan action items.
+- [ ] Integrasi Zoom SDK dan OAuth.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## 🧑‍💻 Built By
+const developer =  [
+{devName: 'Muhammad Rizki Ramadhan'},
+{devName: 'Khaidar Ali'}
+];
 
-Simply open [Lovable](https://lovable.dev/projects/bb253134-1245-42bf-bc2e-2a9fff2d7939) and click on Share -> Publish.
+const gitDev = [
+{devLink: https://github.com/ayhylim},
+{devLink: https://github.com/khaidarTb}
+]
 
-## Can I connect a custom domain to my Lovable project?
+---
 
-Yes, you can!
+## ⚖️ Lisensi
+Proyek ini menggunakan lisensi MIT. Silakan gunakan, modifikasi, dan kontribusi secara terbuka dengan tetap menghargai atribusi dan etika penggunaan data suara dan privasi pengguna.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
