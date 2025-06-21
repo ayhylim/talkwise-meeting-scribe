@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, MicOff, Upload, Play, Pause, Square, Settings } from "lucide-react";
+import { Mic, MicOff, Upload, Play, Pause, Square, Settings, Monitor } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // TypeScript declarations for Speech Recognition
@@ -28,15 +28,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recognition, setRecognition] = useState<any>(null);
-  const [finalTranscript, setFinalTranscript] = useState("");
-  const [interimTranscript, setInterimTranscript] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("id-ID");
   const [isListening, setIsListening] = useState(false);
+  const [audioSource, setAudioSource] = useState<"microphone" | "system">("microphone");
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const isRecordingRef = useRef(false);
+  const accumulatedTranscriptRef = useRef("");
+  const currentSessionRef = useRef("");
   const { toast } = useToast();
 
   // Language options
@@ -72,7 +73,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognitionInstance = new SpeechRecognition();
     
-    // Optimized settings for lower latency and better accuracy
+    // Optimized settings for continuous transcript
     recognitionInstance.continuous = true;
     recognitionInstance.interimResults = true;
     recognitionInstance.lang = selectedLanguage;
@@ -80,7 +81,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     
     // Set faster response time
     if ('webkitSpeechRecognition' in window) {
-      recognitionInstance.webkitServiceType = 'search'; // Faster than dictation
+      recognitionInstance.webkitServiceType = 'search';
     }
     
     recognitionInstance.onstart = () => {
@@ -92,9 +93,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       console.log("Speech recognition ended");
       setIsListening(false);
       
-      // Only restart if still recording and not manually stopped
+      // Only restart if still recording
       if (isRecordingRef.current) {
-        console.log("Restarting recognition...");
+        console.log("Restarting recognition for continuous transcript...");
         setTimeout(() => {
           if (isRecordingRef.current) {
             try {
@@ -110,35 +111,35 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     recognitionInstance.onresult = (event: any) => {
       console.log("Recognition result received:", event.results.length);
       
-      let newInterimTranscript = '';
-      let newFinalTranscript = finalTranscript;
+      let interimTranscript = '';
       
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      // Process all results from the current session
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0].transcript;
         
         if (result.isFinal) {
           console.log("Final result:", text);
-          newFinalTranscript += text + ' ';
-          setFinalTranscript(newFinalTranscript);
+          // Add final text to accumulated transcript
+          accumulatedTranscriptRef.current += text + ' ';
+          currentSessionRef.current = '';
         } else {
           console.log("Interim result:", text);
-          newInterimTranscript += text;
+          // Update current session interim text
+          interimTranscript = text;
+          currentSessionRef.current = text;
         }
       }
       
-      setInterimTranscript(newInterimTranscript);
-      
-      // Immediately update the parent with combined transcript
-      const fullTranscript = newFinalTranscript + newInterimTranscript;
-      console.log("Sending transcript update:", fullTranscript);
+      // Send complete transcript (accumulated + current interim)
+      const fullTranscript = accumulatedTranscriptRef.current + currentSessionRef.current;
+      console.log("Sending continuous transcript:", fullTranscript);
       onTranscriptReady(fullTranscript);
     };
     
     recognitionInstance.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       
-      // Handle errors more gracefully
       if (event.error === 'not-allowed') {
         toast({
           title: "Microphone Access Denied",
@@ -151,13 +152,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         console.log("Network error, will retry...");
       } else if (event.error === 'no-speech') {
         console.log("No speech detected, continuing...");
-      } else if (event.error === 'aborted') {
-        console.log("Recognition aborted normally");
       }
     };
     
     return recognitionInstance;
-  }, [selectedLanguage, finalTranscript, onTranscriptReady, toast]);
+  }, [selectedLanguage, onTranscriptReady, toast]);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -171,18 +170,54 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, [setupSpeechRecognition]);
 
-  const startRecording = async () => {
-    try {
-      console.log("Starting recording...");
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+  const getAudioConstraints = () => {
+    if (audioSource === "system") {
+      // System audio capture (screen audio)
+      return {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 48000
-        } 
-      });
+          sampleRate: 48000,
+          channelCount: 2
+        },
+        video: false
+      };
+    } else {
+      // Microphone capture
+      return {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          deviceId: 'default'
+        }
+      };
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      console.log("Starting recording with source:", audioSource);
+      
+      let stream;
+      
+      if (audioSource === "system") {
+        // Capture system audio via screen share
+        stream = await (navigator.mediaDevices as any).getDisplayMedia({
+          video: false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000
+          }
+        });
+      } else {
+        // Capture microphone
+        stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+      }
       
       // Start audio recording
       mediaRecorderRef.current = new MediaRecorder(stream, {
@@ -204,14 +239,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         stream.getTracks().forEach(track => track.stop());
       };
       
-      mediaRecorderRef.current.start(250); // 250ms chunks for balance between performance and responsiveness
+      mediaRecorderRef.current.start(100); // 100ms chunks for maximum responsiveness
       setIsRecording(true);
       isRecordingRef.current = true;
       onProcessingStart();
       
-      // Reset transcripts
-      setFinalTranscript("");
-      setInterimTranscript("");
+      // Reset only the session transcript, not accumulated
+      accumulatedTranscriptRef.current = "";
+      currentSessionRef.current = "";
       onTranscriptReady("");
       
       // Start speech recognition
@@ -221,7 +256,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           recognition.start();
         } catch (error) {
           console.log("Speech recognition start error:", error);
-          // Try again after a short delay
           setTimeout(() => {
             if (isRecordingRef.current) {
               try {
@@ -236,13 +270,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       toast({
         title: "Recording Started",
-        description: `Mulai berbicara dalam ${languages.find(l => l.code === selectedLanguage)?.name}`,
+        description: `Mulai ${audioSource === 'system' ? 'merekam audio sistem' : 'berbicara'} dalam ${languages.find(l => l.code === selectedLanguage)?.name}`,
       });
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
         title: "Error",
-        description: "Tidak dapat mengakses microphone. Pastikan browser memiliki akses microphone.",
+        description: `Tidak dapat mengakses ${audioSource === 'system' ? 'audio sistem' : 'microphone'}. Pastikan izin telah diberikan.`,
         variant: "destructive",
       });
     }
@@ -264,16 +298,18 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     
     setIsListening(false);
     
-    // Save transcript to localStorage
-    if (finalTranscript.trim()) {
+    // Save final transcript to localStorage
+    const finalTranscript = accumulatedTranscriptRef.current.trim();
+    if (finalTranscript) {
       const transcriptRecord = {
         id: Date.now().toString(),
         title: `Meeting ${new Date().toLocaleDateString()}`,
-        transcript: finalTranscript.trim(),
+        transcript: finalTranscript,
         summary: '',
         createdAt: new Date(),
         duration: '00:00:00',
-        language: selectedLanguage
+        language: selectedLanguage,
+        audioSource: audioSource
       };
       
       const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
@@ -283,7 +319,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     
     toast({
       title: "Recording Stopped",
-      description: "Audio berhasil direkam dan transcript selesai",
+      description: "Audio berhasil direkam dan transcript lengkap tersimpan",
     });
   };
 
@@ -296,7 +332,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       // Simulate transcription process for uploaded file
       setTimeout(() => {
         const mockTranscript = "Ini adalah contoh transcript dari file audio yang diupload. Dalam implementasi nyata, file audio akan diproses melalui middleware untuk noise reduction dan kemudian dikirim ke API transcription yang lebih canggih seperti Whisper OpenAI atau Google Speech-to-Text.";
-        setFinalTranscript(mockTranscript);
+        accumulatedTranscriptRef.current = mockTranscript;
         onTranscriptReady(mockTranscript);
         
         toast({
@@ -330,26 +366,46 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Language Selection */}
+      {/* Enhanced Controls */}
       <Card className="p-4">
-        <div className="flex items-center space-x-4">
-          <Settings className="h-5 w-5 text-blue-600" />
-          <div className="flex-1">
-            <Label htmlFor="language-select" className="text-sm font-medium">
-              Bahasa Recognition
-            </Label>
-            <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-              <SelectTrigger className="w-full mt-1">
-                <SelectValue placeholder="Pilih bahasa" />
-              </SelectTrigger>
-              <SelectContent>
-                {languages.map((lang) => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center space-x-4">
+            <Settings className="h-5 w-5 text-blue-600" />
+            <div className="flex-1">
+              <Label htmlFor="language-select" className="text-sm font-medium">
+                Bahasa Recognition
+              </Label>
+              <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue placeholder="Pilih bahasa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {languages.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <Monitor className="h-5 w-5 text-purple-600" />
+            <div className="flex-1">
+              <Label htmlFor="audio-source" className="text-sm font-medium">
+                Sumber Audio
+              </Label>
+              <Select value={audioSource} onValueChange={(value: "microphone" | "system") => setAudioSource(value)}>
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue placeholder="Pilih sumber audio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="microphone">Microphone</SelectItem>
+                  <SelectItem value="system">System Audio (Layar)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </Card>
@@ -368,19 +424,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             {isRecording ? (
               <Square className="h-6 w-6 text-white" />
             ) : (
-              <Mic className="h-6 w-6 text-white" />
+              audioSource === "system" ? <Monitor className="h-6 w-6 text-white" /> : <Mic className="h-6 w-6 text-white" />
             )}
           </Button>
         </div>
         
         <div className="text-center">
           <p className="text-sm text-slate-600">
-            {isRecording ? 'Recording... Klik untuk stop' : 'Klik untuk mulai recording'}
+            {isRecording 
+              ? `Recording ${audioSource === 'system' ? 'system audio' : 'microphone'}... Klik untuk stop` 
+              : `Klik untuk mulai recording ${audioSource === 'system' ? 'audio sistem' : 'microphone'}`
+            }
           </p>
           {isListening && (
             <div className="flex items-center justify-center space-x-2 mt-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-green-600">AI sedang mendengarkan...</span>
+              <span className="text-xs text-green-600">AI sedang mendengarkan secara kontinu...</span>
             </div>
           )}
         </div>
@@ -432,16 +491,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       )}
 
       {/* Live Transcript Preview */}
-      {(finalTranscript || interimTranscript) && (
+      {accumulatedTranscriptRef.current && (
         <Card className="p-4 bg-blue-50 border-blue-200">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-blue-800">Live Transcript Preview</span>
+              <span className="text-sm font-medium text-blue-800">Continuous Transcript Preview</span>
             </div>
-            <div className="text-sm text-blue-700 min-h-[40px] p-2 bg-white rounded border">
-              <span className="font-medium">{finalTranscript}</span>
-              <span className="text-blue-500 italic">{interimTranscript}</span>
+            <div className="text-sm text-blue-700 min-h-[40px] max-h-[120px] overflow-y-auto p-2 bg-white rounded border">
+              <span className="font-medium">{accumulatedTranscriptRef.current}</span>
+              <span className="text-blue-500 italic">{currentSessionRef.current}</span>
             </div>
           </div>
         </Card>
@@ -453,9 +512,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           <div className="flex items-center space-x-3">
             <div className="animate-spin w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full"></div>
             <div>
-              <p className="font-medium text-green-800">Processing Audio...</p>
+              <p className="font-medium text-green-800">Processing Audio Kontinuously...</p>
               <p className="text-sm text-green-600">
-                AI sedang memproses audio real-time dengan akurasi tinggi
+                AI sedang memproses audio secara real-time tanpa reset transcript
               </p>
             </div>
           </div>
