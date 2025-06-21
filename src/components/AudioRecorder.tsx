@@ -28,7 +28,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recognition, setRecognition] = useState<any>(null);
-  const [transcript, setTranscript] = useState("");
   const [finalTranscript, setFinalTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("id-ID");
@@ -37,10 +36,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const recognitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isRecordingRef = useRef(false);
   const { toast } = useToast();
 
-  // Language options for better multi-language support
+  // Language options
   const languages = [
     { code: "id-ID", name: "Bahasa Indonesia" },
     { code: "en-US", name: "English (US)" },
@@ -59,7 +58,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     { code: "nl-NL", name: "Nederlands" },
   ];
 
-  // Optimized Speech Recognition setup with better error handling and restart mechanism
+  // Enhanced Speech Recognition setup
   const setupSpeechRecognition = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       toast({
@@ -73,109 +72,94 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognitionInstance = new SpeechRecognition();
     
-    // Enhanced configuration for better accuracy and lower latency
+    // Optimized settings for lower latency and better accuracy
     recognitionInstance.continuous = true;
     recognitionInstance.interimResults = true;
     recognitionInstance.lang = selectedLanguage;
-    recognitionInstance.maxAlternatives = 3; // Get multiple alternatives for better accuracy
+    recognitionInstance.maxAlternatives = 1;
     
-    // Faster response settings
+    // Set faster response time
     if ('webkitSpeechRecognition' in window) {
-      recognitionInstance.webkitServiceType = 'dictation'; // Better for continuous speech
+      recognitionInstance.webkitServiceType = 'search'; // Faster than dictation
     }
     
     recognitionInstance.onstart = () => {
+      console.log("Speech recognition started successfully");
       setIsListening(true);
-      console.log("Speech recognition started");
     };
 
     recognitionInstance.onend = () => {
-      setIsListening(false);
       console.log("Speech recognition ended");
+      setIsListening(false);
       
-      // Auto-restart if still recording to maintain continuous recognition
-      if (isRecording) {
+      // Only restart if still recording and not manually stopped
+      if (isRecordingRef.current) {
+        console.log("Restarting recognition...");
         setTimeout(() => {
-          try {
-            recognitionInstance.start();
-          } catch (error) {
-            console.log("Recognition restart failed:", error);
+          if (isRecordingRef.current) {
+            try {
+              recognitionInstance.start();
+            } catch (error) {
+              console.log("Failed to restart recognition:", error);
+            }
           }
         }, 100);
       }
     };
     
     recognitionInstance.onresult = (event: any) => {
+      console.log("Recognition result received:", event.results.length);
+      
       let newInterimTranscript = '';
       let newFinalTranscript = finalTranscript;
       
-      // Process results with improved accuracy
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0].transcript;
         
         if (result.isFinal) {
+          console.log("Final result:", text);
           newFinalTranscript += text + ' ';
           setFinalTranscript(newFinalTranscript);
         } else {
+          console.log("Interim result:", text);
           newInterimTranscript += text;
         }
       }
       
       setInterimTranscript(newInterimTranscript);
       
-      // Combine final and interim for live display
+      // Immediately update the parent with combined transcript
       const fullTranscript = newFinalTranscript + newInterimTranscript;
-      setTranscript(fullTranscript);
+      console.log("Sending transcript update:", fullTranscript);
       onTranscriptReady(fullTranscript);
-      
-      // Clear timeout for smoother experience
-      if (recognitionTimeoutRef.current) {
-        clearTimeout(recognitionTimeoutRef.current);
-      }
     };
     
     recognitionInstance.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       
-      // Handle specific errors without showing toast for common issues
-      if (event.error === 'network') {
-        // Silently try to restart
-        setTimeout(() => {
-          if (isRecording) {
-            try {
-              recognitionInstance.start();
-            } catch (error) {
-              console.log("Network error restart failed");
-            }
-          }
-        }, 1000);
-      } else if (event.error === 'aborted') {
-        // Normal when stopping, don't show error
-        return;
-      } else if (event.error === 'no-speech') {
-        // Just restart, no error needed
-        setTimeout(() => {
-          if (isRecording) {
-            try {
-              recognitionInstance.start();
-            } catch (error) {
-              console.log("No speech restart failed");
-            }
-          }
-        }, 500);
-      } else {
+      // Handle errors more gracefully
+      if (event.error === 'not-allowed') {
         toast({
-          title: "Recognition Error",
-          description: `Error: ${event.error}`,
+          title: "Microphone Access Denied",
+          description: "Mohon izinkan akses microphone untuk menggunakan fitur ini",
           variant: "destructive",
         });
+        setIsRecording(false);
+        isRecordingRef.current = false;
+      } else if (event.error === 'network') {
+        console.log("Network error, will retry...");
+      } else if (event.error === 'no-speech') {
+        console.log("No speech detected, continuing...");
+      } else if (event.error === 'aborted') {
+        console.log("Recognition aborted normally");
       }
     };
     
     return recognitionInstance;
-  }, [selectedLanguage, isRecording, finalTranscript, onTranscriptReady, toast]);
+  }, [selectedLanguage, finalTranscript, onTranscriptReady, toast]);
 
+  // Initialize speech recognition
   useEffect(() => {
     const recognitionInstance = setupSpeechRecognition();
     setRecognition(recognitionInstance);
@@ -184,31 +168,34 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       if (recognitionInstance) {
         recognitionInstance.stop();
       }
-      if (recognitionTimeoutRef.current) {
-        clearTimeout(recognitionTimeoutRef.current);
-      }
     };
   }, [setupSpeechRecognition]);
 
   const startRecording = async () => {
     try {
+      console.log("Starting recording...");
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 44100
+          sampleRate: 48000
         } 
       });
       
       // Start audio recording
       mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+          ? 'audio/webm;codecs=opus' 
+          : 'audio/webm'
       });
       chunksRef.current = [];
       
       mediaRecorderRef.current.ondataavailable = (event) => {
-        chunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
       };
       
       mediaRecorderRef.current.onstop = () => {
@@ -217,26 +204,31 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         stream.getTracks().forEach(track => track.stop());
       };
       
-      mediaRecorderRef.current.start(100); // Record in 100ms chunks for lower latency
+      mediaRecorderRef.current.start(250); // 250ms chunks for balance between performance and responsiveness
       setIsRecording(true);
+      isRecordingRef.current = true;
       onProcessingStart();
       
       // Reset transcripts
       setFinalTranscript("");
       setInterimTranscript("");
-      setTranscript("");
+      onTranscriptReady("");
       
-      // Start speech recognition with retry mechanism
+      // Start speech recognition
       if (recognition) {
+        console.log("Starting speech recognition...");
         try {
           recognition.start();
         } catch (error) {
-          console.log("Recognition start error:", error);
+          console.log("Speech recognition start error:", error);
+          // Try again after a short delay
           setTimeout(() => {
-            try {
-              recognition.start();
-            } catch (retryError) {
-              console.log("Recognition retry failed:", retryError);
+            if (isRecordingRef.current) {
+              try {
+                recognition.start();
+              } catch (retryError) {
+                console.log("Speech recognition retry failed:", retryError);
+              }
             }
           }, 500);
         }
@@ -250,16 +242,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       console.error('Error starting recording:', error);
       toast({
         title: "Error",
-        description: "Tidak dapat mengakses microphone",
+        description: "Tidak dapat mengakses microphone. Pastikan browser memiliki akses microphone.",
         variant: "destructive",
       });
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    console.log("Stopping recording...");
+    
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
     }
     
     if (recognition) {
@@ -268,7 +264,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     
     setIsListening(false);
     
-    // Save transcript to localStorage with final version
+    // Save transcript to localStorage
     if (finalTranscript.trim()) {
       const transcriptRecord = {
         id: Date.now().toString(),
@@ -300,7 +296,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       // Simulate transcription process for uploaded file
       setTimeout(() => {
         const mockTranscript = "Ini adalah contoh transcript dari file audio yang diupload. Dalam implementasi nyata, file audio akan diproses melalui middleware untuk noise reduction dan kemudian dikirim ke API transcription yang lebih canggih seperti Whisper OpenAI atau Google Speech-to-Text.";
-        setTranscript(mockTranscript);
+        setFinalTranscript(mockTranscript);
         onTranscriptReady(mockTranscript);
         
         toast({
@@ -441,9 +437,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-blue-800">Live Transcript</span>
+              <span className="text-sm font-medium text-blue-800">Live Transcript Preview</span>
             </div>
-            <div className="text-sm text-blue-700">
+            <div className="text-sm text-blue-700 min-h-[40px] p-2 bg-white rounded border">
               <span className="font-medium">{finalTranscript}</span>
               <span className="text-blue-500 italic">{interimTranscript}</span>
             </div>
@@ -459,7 +455,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             <div>
               <p className="font-medium text-green-800">Processing Audio...</p>
               <p className="text-sm text-green-600">
-                AI sedang memproses audio real-time dengan teknologi advanced
+                AI sedang memproses audio real-time dengan akurasi tinggi
               </p>
             </div>
           </div>

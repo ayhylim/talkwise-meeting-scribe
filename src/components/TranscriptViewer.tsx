@@ -21,13 +21,11 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   const [editedTranscript, setEditedTranscript] = React.useState("");
   const { toast } = useToast();
 
-  // Auto-scroll to bottom when new text is added with smooth behavior
+  // Auto-scroll to bottom when new text is added
   useEffect(() => {
     if (scrollRef.current && !isEditing) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+      const scrollElement = scrollRef.current;
+      scrollElement.scrollTop = scrollElement.scrollHeight;
     }
   }, [transcript, isEditing]);
 
@@ -42,7 +40,7 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   const processedTranscript = useMemo(() => {
     if (!transcript) return [];
     
-    // Split by sentences but preserve structure better
+    // Split by sentences and clean up
     const sentences = transcript
       .split(/(?<=[.!?])\s+/)
       .filter(sentence => sentence.trim())
@@ -93,7 +91,6 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
       title: "Saved!",
       description: "Perubahan transcript telah disimpan",
     });
-    // In a real app, you would save this back to the parent component or storage
   };
 
   const cancelEdit = () => {
@@ -101,7 +98,7 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
     setEditedTranscript(transcript);
   };
 
-  // Word and character count for current transcript
+  // Word and character count
   const wordCount = useMemo(() => {
     const text = isEditing ? editedTranscript : transcript;
     return text.split(' ').filter(word => word.trim()).length;
@@ -178,15 +175,19 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
                 ref={scrollRef}
                 className="flex-1 overflow-y-auto p-4 bg-slate-50 rounded-lg border"
               >
-                <div className="space-y-3">
-                  {processedTranscript.map((sentence, index) => (
-                    <p key={`${index}-${sentence.substring(0, 20)}`} className="text-slate-700 leading-relaxed">
-                      {sentence}
-                    </p>
-                  ))}
+                <div className="space-y-2">
+                  {transcript.length > 0 ? (
+                    <div className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {transcript}
+                    </div>
+                  ) : (
+                    <div className="text-slate-400 italic">
+                      Mulai berbicara untuk melihat transcript...
+                    </div>
+                  )}
                   
                   {isProcessing && (
-                    <div className="flex items-center space-x-2 text-slate-500">
+                    <div className="flex items-center space-x-2 text-slate-500 mt-4">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
                         <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
@@ -210,7 +211,7 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
         )}
       </div>
 
-      {/* Enhanced Stats */}
+      {/* Stats */}
       {transcript && (
         <div className="mt-4 flex justify-between items-center text-sm text-slate-500 bg-slate-100 rounded-lg p-3">
           <div className="flex space-x-4">
