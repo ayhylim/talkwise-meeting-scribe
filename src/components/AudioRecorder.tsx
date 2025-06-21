@@ -36,8 +36,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const isRecordingRef = useRef(false);
-  const accumulatedTranscriptRef = useRef("");
-  const currentSessionRef = useRef("");
+  const permanentTranscriptRef = useRef("");
+  const currentInterimRef = useRef("");
+  const lastFinalResultRef = useRef("");
   const { toast } = useToast();
 
   // Language options
@@ -59,7 +60,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     { code: "nl-NL", name: "Nederlands" },
   ];
 
-  // Enhanced Speech Recognition setup
+  // Enhanced Speech Recognition setup with fixed accumulation
   const setupSpeechRecognition = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       toast({
@@ -85,7 +86,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
     
     recognitionInstance.onstart = () => {
-      console.log("Speech recognition started successfully");
+      console.log("Speech recognition started");
       setIsListening(true);
     };
 
@@ -95,13 +96,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       // Only restart if still recording
       if (isRecordingRef.current) {
-        console.log("Restarting recognition for continuous transcript...");
+        console.log("Restarting recognition...");
         setTimeout(() => {
           if (isRecordingRef.current) {
             try {
               recognitionInstance.start();
             } catch (error) {
-              console.log("Failed to restart recognition:", error);
+              console.log("Restart failed:", error);
             }
           }
         }, 100);
@@ -109,32 +110,38 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
     
     recognitionInstance.onresult = (event: any) => {
-      console.log("Recognition result received:", event.results.length);
+      let finalText = '';
+      let interimText = '';
       
-      let interimTranscript = '';
-      
-      // Process all results from the current session
+      // Process all results to get the latest final and interim text
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0].transcript;
         
         if (result.isFinal) {
-          console.log("Final result:", text);
-          // Add final text to accumulated transcript
-          accumulatedTranscriptRef.current += text + ' ';
-          currentSessionRef.current = '';
+          finalText = text;
         } else {
-          console.log("Interim result:", text);
-          // Update current session interim text
-          interimTranscript = text;
-          currentSessionRef.current = text;
+          interimText = text;
         }
       }
       
-      // Send complete transcript (accumulated + current interim)
-      const fullTranscript = accumulatedTranscriptRef.current + currentSessionRef.current;
-      console.log("Sending continuous transcript:", fullTranscript);
-      onTranscriptReady(fullTranscript);
+      // Only add to permanent transcript if we have new final text
+      if (finalText && finalText !== lastFinalResultRef.current) {
+        console.log("New final text:", finalText);
+        permanentTranscriptRef.current += finalText + ' ';
+        lastFinalResultRef.current = finalText;
+        currentInterimRef.current = '';
+      }
+      
+      // Update current interim (this will be shown in addition to permanent)
+      if (interimText) {
+        currentInterimRef.current = interimText;
+      }
+      
+      // Send the complete transcript: permanent + current interim
+      const completeTranscript = permanentTranscriptRef.current + currentInterimRef.current;
+      console.log("Complete transcript:", completeTranscript);
+      onTranscriptReady(completeTranscript);
     };
     
     recognitionInstance.onerror = (event: any) => {
@@ -148,10 +155,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         });
         setIsRecording(false);
         isRecordingRef.current = false;
-      } else if (event.error === 'network') {
-        console.log("Network error, will retry...");
-      } else if (event.error === 'no-speech') {
-        console.log("No speech detected, continuing...");
       }
     };
     
@@ -244,9 +247,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       isRecordingRef.current = true;
       onProcessingStart();
       
-      // Reset only the session transcript, not accumulated
-      accumulatedTranscriptRef.current = "";
-      currentSessionRef.current = "";
+      // Reset for new session but don't clear existing permanent transcript
+      permanentTranscriptRef.current = "";
+      currentInterimRef.current = "";
+      lastFinalResultRef.current = "";
       onTranscriptReady("");
       
       // Start speech recognition
@@ -255,13 +259,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         try {
           recognition.start();
         } catch (error) {
-          console.log("Speech recognition start error:", error);
+          console.log("Recognition start error:", error);
           setTimeout(() => {
             if (isRecordingRef.current) {
               try {
                 recognition.start();
               } catch (retryError) {
-                console.log("Speech recognition retry failed:", retryError);
+                console.log("Recognition retry failed:", retryError);
               }
             }
           }, 500);
@@ -299,7 +303,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     setIsListening(false);
     
     // Save final transcript to localStorage
-    const finalTranscript = accumulatedTranscriptRef.current.trim();
+    const finalTranscript = permanentTranscriptRef.current.trim();
     if (finalTranscript) {
       const transcriptRecord = {
         id: Date.now().toString(),
@@ -491,7 +495,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       )}
 
       {/* Live Transcript Preview */}
-      {accumulatedTranscriptRef.current && (
+      {permanentTranscriptRef.current && (
         <Card className="p-4 bg-blue-50 border-blue-200">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
@@ -499,8 +503,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               <span className="text-sm font-medium text-blue-800">Continuous Transcript Preview</span>
             </div>
             <div className="text-sm text-blue-700 min-h-[40px] max-h-[120px] overflow-y-auto p-2 bg-white rounded border">
-              <span className="font-medium">{accumulatedTranscriptRef.current}</span>
-              <span className="text-blue-500 italic">{currentSessionRef.current}</span>
+              <span className="font-medium">{permanentTranscriptRef.current}</span>
+              <span className="text-blue-500 italic">{currentInterimRef.current}</span>
             </div>
           </div>
         </Card>
