@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, MicOff, Upload, Play, Pause, Square, Settings } from "lucide-react";
+import { Mic, MicOff, Upload, Play, Pause, Square, Settings, Monitor, Headphones } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // TypeScript declarations for Speech Recognition
@@ -32,6 +32,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [interimTranscript, setInterimTranscript] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("id-ID");
   const [isListening, setIsListening] = useState(false);
+  const [audioSource, setAudioSource] = useState("microphone"); // "microphone" or "system"
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -58,6 +59,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     { code: "nl-NL", name: "Nederlands" },
   ];
 
+  // Audio source options
+  const audioSources = [
+    { value: "microphone", label: "Microphone", icon: Mic },
+    { value: "system", label: "System Audio (Screen)", icon: Monitor },
+  ];
+
   // Enhanced Speech Recognition setup
   const setupSpeechRecognition = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -80,7 +87,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     
     // Set faster response time
     if ('webkitSpeechRecognition' in window) {
-      recognitionInstance.webkitServiceType = 'search'; // Faster than dictation
+      recognitionInstance.webkitServiceType = 'search';
     }
     
     recognitionInstance.onstart = () => {
@@ -171,11 +178,45 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, [setupSpeechRecognition]);
 
-  const startRecording = async () => {
-    try {
-      console.log("Starting recording...");
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+  // Get audio stream based on selected source
+  const getAudioStream = async (): Promise<MediaStream> => {
+    if (audioSource === "system") {
+      // Capture system audio (screen audio)
+      try {
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+            channelCount: 2
+          }
+        });
+        
+        console.log("System audio capture started");
+        return displayStream;
+      } catch (error) {
+        console.error("System audio capture failed:", error);
+        toast({
+          title: "System Audio Failed",
+          description: "Tidak dapat mengakses system audio. Mencoba microphone...",
+          variant: "destructive",
+        });
+        
+        // Fallback to microphone
+        return await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000
+          } 
+        });
+      }
+    } else {
+      // Regular microphone capture
+      return await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -183,6 +224,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           sampleRate: 48000
         } 
       });
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      console.log(`Starting recording with ${audioSource}...`);
+      
+      const stream = await getAudioStream();
       
       // Start audio recording
       mediaRecorderRef.current = new MediaRecorder(stream, {
@@ -204,7 +253,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         stream.getTracks().forEach(track => track.stop());
       };
       
-      mediaRecorderRef.current.start(250); // 250ms chunks for balance between performance and responsiveness
+      mediaRecorderRef.current.start(250);
       setIsRecording(true);
       isRecordingRef.current = true;
       onProcessingStart();
@@ -221,7 +270,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           recognition.start();
         } catch (error) {
           console.log("Speech recognition start error:", error);
-          // Try again after a short delay
           setTimeout(() => {
             if (isRecordingRef.current) {
               try {
@@ -234,15 +282,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         }
       }
       
+      const sourceLabel = audioSources.find(s => s.value === audioSource)?.label || audioSource;
       toast({
         title: "Recording Started",
-        description: `Mulai berbicara dalam ${languages.find(l => l.code === selectedLanguage)?.name}`,
+        description: `Mulai capture audio dari ${sourceLabel} dalam ${languages.find(l => l.code === selectedLanguage)?.name}`,
       });
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
         title: "Error",
-        description: "Tidak dapat mengakses microphone. Pastikan browser memiliki akses microphone.",
+        description: "Tidak dapat mengakses audio source. Pastikan browser memiliki permission yang diperlukan.",
         variant: "destructive",
       });
     }
@@ -273,7 +322,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         summary: '',
         createdAt: new Date(),
         duration: '00:00:00',
-        language: selectedLanguage
+        language: selectedLanguage,
+        audioSource: audioSource
       };
       
       const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
@@ -307,6 +357,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
   };
 
+  // ... keep existing code (playAudio and pauseAudio functions)
   const playAudio = () => {
     if (audioBlob && audioRef.current) {
       const audioUrl = URL.createObjectURL(audioBlob);
@@ -330,11 +381,47 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Language Selection */}
+      {/* Settings Card */}
       <Card className="p-4">
-        <div className="flex items-center space-x-4">
-          <Settings className="h-5 w-5 text-blue-600" />
-          <div className="flex-1">
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Settings className="h-5 w-5 text-blue-600" />
+            <span className="font-medium">Audio Settings</span>
+          </div>
+          
+          {/* Audio Source Selection */}
+          <div>
+            <Label htmlFor="audio-source" className="text-sm font-medium">
+              Audio Source
+            </Label>
+            <Select value={audioSource} onValueChange={setAudioSource}>
+              <SelectTrigger className="w-full mt-1">
+                <SelectValue placeholder="Pilih sumber audio" />
+              </SelectTrigger>
+              <SelectContent>
+                {audioSources.map((source) => {
+                  const IconComponent = source.icon;
+                  return (
+                    <SelectItem key={source.value} value={source.value}>
+                      <div className="flex items-center space-x-2">
+                        <IconComponent className="h-4 w-4" />
+                        <span>{source.label}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500 mt-1">
+              {audioSource === "system" 
+                ? "Capture audio dari meeting online, YouTube, atau aplikasi lain di layar"
+                : "Capture audio dari microphone atau headset"
+              }
+            </p>
+          </div>
+
+          {/* Language Selection */}
+          <div>
             <Label htmlFor="language-select" className="text-sm font-medium">
               Bahasa Recognition
             </Label>
@@ -367,6 +454,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           >
             {isRecording ? (
               <Square className="h-6 w-6 text-white" />
+            ) : audioSource === "system" ? (
+              <Monitor className="h-6 w-6 text-white" />
             ) : (
               <Mic className="h-6 w-6 text-white" />
             )}
@@ -375,7 +464,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         
         <div className="text-center">
           <p className="text-sm text-slate-600">
-            {isRecording ? 'Recording... Klik untuk stop' : 'Klik untuk mulai recording'}
+            {isRecording 
+              ? `Recording ${audioSource === "system" ? "system audio" : "microphone"}... Klik untuk stop` 
+              : `Klik untuk mulai recording dari ${audioSource === "system" ? "system audio" : "microphone"}`
+            }
           </p>
           {isListening && (
             <div className="flex items-center justify-center space-x-2 mt-2">
@@ -385,6 +477,29 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           )}
         </div>
       </div>
+
+      {/* System Audio Info */}
+      {audioSource === "system" && (
+        <Card className="p-4 bg-blue-50 border-blue-200">
+          <div className="flex items-start space-x-3">
+            <Monitor className="h-5 w-5 text-blue-600 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-blue-800">System Audio Capture</h4>
+              <p className="text-sm text-blue-700 mt-1">
+                Mode ini akan menangkap audio dari aplikasi yang sedang berjalan di layar Anda seperti:
+              </p>
+              <ul className="text-sm text-blue-600 mt-2 list-disc list-inside">
+                <li>Meeting online (Zoom, Google Meet, Teams)</li>
+                <li>Video YouTube atau streaming</li>
+                <li>Audio dari aplikasi desktop lainnya</li>
+              </ul>
+              <p className="text-xs text-blue-500 mt-2">
+                Browser akan meminta Anda untuk memilih tab atau aplikasi yang akan di-capture.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* File Upload */}
       <Card className="p-4 border-dashed border-2 border-slate-300">
@@ -455,7 +570,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             <div>
               <p className="font-medium text-green-800">Processing Audio...</p>
               <p className="text-sm text-green-600">
-                AI sedang memproses audio real-time dengan akurasi tinggi
+                AI sedang memproses audio dari {audioSource === "system" ? "system/layar" : "microphone"} secara real-time
               </p>
             </div>
           </div>
