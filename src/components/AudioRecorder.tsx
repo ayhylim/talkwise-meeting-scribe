@@ -1,10 +1,11 @@
+
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, MicOff, Upload, Play, Pause, Square, Settings } from "lucide-react";
+import { Mic, Upload, Play, Pause, Square, Settings, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // TypeScript declarations for Speech Recognition
@@ -28,7 +29,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recognition, setRecognition] = useState<any>(null);
-  const [finalTranscript, setFinalTranscript] = useState("");
+  const [permanentTranscript, setPermanentTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("id-ID");
   const [isListening, setIsListening] = useState(false);
@@ -37,6 +38,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const isRecordingRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const { toast } = useToast();
 
   // Language options
@@ -58,7 +61,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     { code: "nl-NL", name: "Nederlands" },
   ];
 
-  // Enhanced Speech Recognition setup
+  // Enhanced Speech Recognition setup dengan audio routing yang lebih baik
   const setupSpeechRecognition = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       toast({
@@ -72,15 +75,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognitionInstance = new SpeechRecognition();
     
-    // Optimized settings for lower latency and better accuracy
     recognitionInstance.continuous = true;
     recognitionInstance.interimResults = true;
     recognitionInstance.lang = selectedLanguage;
     recognitionInstance.maxAlternatives = 1;
     
-    // Set faster response time
     if ('webkitSpeechRecognition' in window) {
-      recognitionInstance.webkitServiceType = 'search'; // Faster than dictation
+      recognitionInstance.webkitServiceType = 'search';
     }
     
     recognitionInstance.onstart = () => {
@@ -92,7 +93,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       console.log("Speech recognition ended");
       setIsListening(false);
       
-      // Only restart if still recording and not manually stopped
       if (isRecordingRef.current) {
         console.log("Restarting recognition...");
         setTimeout(() => {
@@ -111,7 +111,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       console.log("Recognition result received:", event.results.length);
       
       let newInterimTranscript = '';
-      let newFinalTranscript = finalTranscript;
+      let newFinalText = '';
       
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -119,18 +119,24 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         
         if (result.isFinal) {
           console.log("Final result:", text);
-          newFinalTranscript += text + ' ';
-          setFinalTranscript(newFinalTranscript);
+          newFinalText += text + ' ';
         } else {
           console.log("Interim result:", text);
           newInterimTranscript += text;
         }
       }
       
+      // Update permanent transcript jika ada final text
+      if (newFinalText) {
+        const updatedPermanent = permanentTranscript + newFinalText;
+        setPermanentTranscript(updatedPermanent);
+        console.log("Updated permanent transcript:", updatedPermanent);
+      }
+      
       setInterimTranscript(newInterimTranscript);
       
-      // Immediately update the parent with combined transcript
-      const fullTranscript = newFinalTranscript + newInterimTranscript;
+      // Kirim gabungan permanent + interim ke parent
+      const fullTranscript = permanentTranscript + newFinalText + newInterimTranscript;
       console.log("Sending transcript update:", fullTranscript);
       onTranscriptReady(fullTranscript);
     };
@@ -138,7 +144,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     recognitionInstance.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       
-      // Handle errors more gracefully
       if (event.error === 'not-allowed') {
         toast({
           title: "Microphone Access Denied",
@@ -157,7 +162,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
     
     return recognitionInstance;
-  }, [selectedLanguage, finalTranscript, onTranscriptReady, toast]);
+  }, [selectedLanguage, permanentTranscript, onTranscriptReady, toast]);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -171,21 +176,116 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, [setupSpeechRecognition]);
 
+  // Fungsi untuk menggabungkan audio streams (microphone + system)
+  const createMixedAudioStream = async (): Promise<MediaStream> => {
+    try {
+      // Setup Audio Context
+      audioContextRef.current = new AudioContext();
+      const audioContext = audioContextRef.current;
+      
+      // Create destination untuk mixed audio
+      destinationRef.current = audioContext.createMediaStreamDestination();
+      const destination = destinationRef.current;
+      
+      console.log("Attempting to get microphone stream...");
+      
+      // Get microphone stream
+      let microphoneStream: MediaStream;
+      try {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000
+          } 
+        });
+        console.log("Microphone stream obtained successfully");
+        
+        // Connect microphone to destination
+        const micSource = audioContext.createMediaStreamSource(microphoneStream);
+        micSource.connect(destination);
+        
+      } catch (micError) {
+        console.warn("Microphone access failed:", micError);
+        toast({
+          title: "Microphone Warning", 
+          description: "Tidak dapat mengakses microphone, akan mencoba hanya system audio",
+          variant: "destructive",
+        });
+      }
+      
+      // Get system audio stream
+      console.log("Attempting to get system audio stream...");
+      try {
+        const systemStream = await navigator.mediaDevices.getDisplayMedia({
+          video: false,
+          audio: {
+            echoCancellation: false, // Disable untuk system audio agar lebih jelas
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 48000,
+            channelCount: 2
+          }
+        });
+        
+        console.log("System audio stream obtained successfully");
+        
+        // Connect system audio to destination
+        const systemSource = audioContext.createMediaStreamSource(systemStream);
+        systemSource.connect(destination);
+        
+        // Handle system stream ending
+        systemStream.getVideoTracks().forEach(track => track.stop());
+        systemStream.getAudioTracks().forEach(track => {
+          track.addEventListener('ended', () => {
+            console.log("System audio track ended");
+          });
+        });
+        
+      } catch (systemError) {
+        console.warn("System audio access failed:", systemError);
+        toast({
+          title: "System Audio Warning",
+          description: "Tidak dapat mengakses system audio, akan menggunakan microphone saja",
+        });
+      }
+      
+      // Return mixed stream
+      const mixedStream = destination.stream;
+      console.log("Mixed audio stream created with tracks:", mixedStream.getTracks().length);
+      
+      return mixedStream;
+      
+    } catch (error) {
+      console.error("Error creating mixed audio stream:", error);
+      
+      // Fallback ke microphone saja
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          } 
+        });
+        console.log("Using fallback microphone stream");
+        return fallbackStream;
+      } catch (fallbackError) {
+        console.error("Complete audio access failed:", fallbackError);
+        throw new Error("Tidak dapat mengakses audio source apapun");
+      }
+    }
+  };
+
   const startRecording = async () => {
     try {
-      console.log("Starting recording...");
+      console.log("Starting mixed audio recording...");
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000
-        } 
-      });
+      const mixedStream = await createMixedAudioStream();
       
-      // Start audio recording
-      mediaRecorderRef.current = new MediaRecorder(stream, {
+      // Start audio recording dengan mixed stream
+      mediaRecorderRef.current = new MediaRecorder(mixedStream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
           ? 'audio/webm;codecs=opus' 
           : 'audio/webm'
@@ -201,27 +301,32 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
+        
+        // Cleanup streams
+        mixedStream.getTracks().forEach(track => track.stop());
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+        }
       };
       
-      mediaRecorderRef.current.start(250); // 250ms chunks for balance between performance and responsiveness
+      mediaRecorderRef.current.start(250);
       setIsRecording(true);
       isRecordingRef.current = true;
       onProcessingStart();
       
       // Reset transcripts
-      setFinalTranscript("");
+      setPermanentTranscript("");
       setInterimTranscript("");
       onTranscriptReady("");
       
-      // Start speech recognition
+      // Start speech recognition dengan mixed audio
       if (recognition) {
-        console.log("Starting speech recognition...");
+        console.log("Starting speech recognition for mixed audio...");
         try {
           recognition.start();
         } catch (error) {
           console.log("Speech recognition start error:", error);
-          // Try again after a short delay
           setTimeout(() => {
             if (isRecordingRef.current) {
               try {
@@ -236,13 +341,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       toast({
         title: "Recording Started",
-        description: `Mulai berbicara dalam ${languages.find(l => l.code === selectedLanguage)?.name}`,
+        description: `Mulai capture audio gabungan (microphone + system) dalam ${languages.find(l => l.code === selectedLanguage)?.name}`,
       });
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
-        title: "Error",
-        description: "Tidak dapat mengakses microphone. Pastikan browser memiliki akses microphone.",
+        title: "Error", 
+        description: "Tidak dapat mengakses audio. Pastikan browser memiliki permission yang diperlukan.",
         variant: "destructive",
       });
     }
@@ -265,15 +370,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     setIsListening(false);
     
     // Save transcript to localStorage
-    if (finalTranscript.trim()) {
+    if (permanentTranscript.trim()) {
       const transcriptRecord = {
         id: Date.now().toString(),
         title: `Meeting ${new Date().toLocaleDateString()}`,
-        transcript: finalTranscript.trim(),
+        transcript: permanentTranscript.trim(),
         summary: '',
         createdAt: new Date(),
         duration: '00:00:00',
-        language: selectedLanguage
+        language: selectedLanguage,
+        audioSource: 'mixed'
       };
       
       const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
@@ -296,7 +402,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       // Simulate transcription process for uploaded file
       setTimeout(() => {
         const mockTranscript = "Ini adalah contoh transcript dari file audio yang diupload. Dalam implementasi nyata, file audio akan diproses melalui middleware untuk noise reduction dan kemudian dikirim ke API transcription yang lebih canggih seperti Whisper OpenAI atau Google Speech-to-Text.";
-        setFinalTranscript(mockTranscript);
+        setPermanentTranscript(mockTranscript);
         onTranscriptReady(mockTranscript);
         
         toast({
@@ -330,11 +436,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Language Selection */}
+      {/* Settings Card */}
       <Card className="p-4">
-        <div className="flex items-center space-x-4">
-          <Settings className="h-5 w-5 text-blue-600" />
-          <div className="flex-1">
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Settings className="h-5 w-5 text-blue-600" />
+            <span className="font-medium">Audio Settings</span>
+          </div>
+          
+          {/* Language Selection */}
+          <div>
             <Label htmlFor="language-select" className="text-sm font-medium">
               Bahasa Recognition
             </Label>
@@ -368,23 +479,47 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             {isRecording ? (
               <Square className="h-6 w-6 text-white" />
             ) : (
-              <Mic className="h-6 w-6 text-white" />
+              <Users className="h-6 w-6 text-white" />
             )}
           </Button>
         </div>
         
         <div className="text-center">
           <p className="text-sm text-slate-600">
-            {isRecording ? 'Recording... Klik untuk stop' : 'Klik untuk mulai recording'}
+            {isRecording 
+              ? "Recording audio gabungan (User + System)... Klik untuk stop" 
+              : "Klik untuk mulai recording audio gabungan (User + System)"
+            }
           </p>
           {isListening && (
             <div className="flex items-center justify-center space-x-2 mt-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-green-600">AI sedang mendengarkan...</span>
+              <span className="text-xs text-green-600">AI sedang mendengarkan semua audio...</span>
             </div>
           )}
         </div>
       </div>
+
+      {/* Mixed Audio Info */}
+      <Card className="p-4 bg-green-50 border-green-200">
+        <div className="flex items-start space-x-3">
+          <Users className="h-5 w-5 text-green-600 mt-0.5" />
+          <div>
+            <h4 className="font-medium text-green-800">Mixed Audio Capture</h4>
+            <p className="text-sm text-green-700 mt-1">
+              Sistem akan menangkap audio dari:
+            </p>
+            <ul className="text-sm text-green-600 mt-2 list-disc list-inside">
+              <li>Microphone Anda (suara berbicara)</li>
+              <li>System Audio (meeting online, YouTube, aplikasi lain)</li>
+              <li>Semua audio digabung menjadi satu transcript</li>
+            </ul>
+            <p className="text-xs text-green-500 mt-2">
+              Perfect untuk meeting online dimana Anda berbicara dan mendengar peserta lain.
+            </p>
+          </div>
+        </div>
+      </Card>
 
       {/* File Upload */}
       <Card className="p-4 border-dashed border-2 border-slate-300">
@@ -432,15 +567,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       )}
 
       {/* Live Transcript Preview */}
-      {(finalTranscript || interimTranscript) && (
+      {(permanentTranscript || interimTranscript) && (
         <Card className="p-4 bg-blue-50 border-blue-200">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-blue-800">Live Transcript Preview</span>
+              <span className="text-sm font-medium text-blue-800">Live Transcript Preview (Mixed Audio)</span>
             </div>
-            <div className="text-sm text-blue-700 min-h-[40px] p-2 bg-white rounded border">
-              <span className="font-medium">{finalTranscript}</span>
+            <div className="text-sm text-blue-700 min-h-[40px] p-2 bg-white rounded border max-h-32 overflow-y-auto">
+              <span className="font-medium">{permanentTranscript}</span>
               <span className="text-blue-500 italic">{interimTranscript}</span>
             </div>
           </div>
@@ -453,9 +588,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           <div className="flex items-center space-x-3">
             <div className="animate-spin w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full"></div>
             <div>
-              <p className="font-medium text-green-800">Processing Audio...</p>
+              <p className="font-medium text-green-800">Processing Mixed Audio...</p>
               <p className="text-sm text-green-600">
-                AI sedang memproses audio real-time dengan akurasi tinggi
+                AI sedang memproses audio gabungan dari microphone dan system secara real-time
               </p>
             </div>
           </div>
