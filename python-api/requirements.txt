@@ -1,0 +1,10 @@
+flask
+flask-cors
+numpy
+librosa
+noisereduce
+soundfile
+scipy
+fastapi
+uvicorn[standard]
+whisper

@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, MutableRefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,11 +7,58 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Mic, Upload, Play, Pause, Square, Settings, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-// TypeScript declarations for Speech Recognition
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
+  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message: string;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  readonly isFinal: boolean;
+  readonly length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+}
+
+interface SpeechRecognitionAlternative {
+  readonly transcript: string;
+  readonly confidence: number;
+}
+
 declare global {
   interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
+    SpeechRecognition: {
+      prototype: SpeechRecognition;
+      new (): SpeechRecognition;
+    };
+    webkitSpeechRecognition: {
+      prototype: SpeechRecognition;
+      new (): SpeechRecognition;
+    };
   }
 }
 
@@ -28,8 +74,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [recognition, setRecognition] = useState<any>(null);
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
   const [permanentTranscript, setPermanentTranscript] = useState("");
+  const permanentTranscriptRef = useRef("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("id-ID");
   const [isListening, setIsListening] = useState(false);
@@ -81,6 +128,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     recognitionInstance.maxAlternatives = 1;
     
     if ('webkitSpeechRecognition' in window) {
+      // @ts-expect-error
       recognitionInstance.webkitServiceType = 'search';
     }
     
@@ -107,7 +155,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       }
     };
     
-    recognitionInstance.onresult = (event: any) => {
+    recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
       console.log("Recognition result received:", event.results.length);
       
       let newInterimTranscript = '';
@@ -126,22 +174,21 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         }
       }
       
-      // Update permanent transcript jika ada final text
       if (newFinalText) {
-        const updatedPermanent = permanentTranscript + newFinalText;
+        const updatedPermanent = permanentTranscriptRef.current + newFinalText;
+        permanentTranscriptRef.current = updatedPermanent;
         setPermanentTranscript(updatedPermanent);
         console.log("Updated permanent transcript:", updatedPermanent);
       }
       
       setInterimTranscript(newInterimTranscript);
       
-      // Kirim gabungan permanent + interim ke parent
-      const fullTranscript = permanentTranscript + newFinalText + newInterimTranscript;
+      const fullTranscript = permanentTranscriptRef.current + newFinalText + newInterimTranscript;
       console.log("Sending transcript update:", fullTranscript);
       onTranscriptReady(fullTranscript);
     };
     
-    recognitionInstance.onerror = (event: any) => {
+    recognitionInstance.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
       
       if (event.error === 'not-allowed') {
@@ -164,7 +211,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     return recognitionInstance;
   }, [selectedLanguage, permanentTranscript, onTranscriptReady, toast]);
 
-  // Initialize speech recognition
   useEffect(() => {
     const recognitionInstance = setupSpeechRecognition();
     setRecognition(recognitionInstance);
@@ -176,20 +222,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, [setupSpeechRecognition]);
 
-  // Fungsi untuk menggabungkan audio streams (microphone + system)
   const createMixedAudioStream = async (): Promise<MediaStream> => {
     try {
-      // Setup Audio Context
       audioContextRef.current = new AudioContext();
       const audioContext = audioContextRef.current;
       
-      // Create destination untuk mixed audio
       destinationRef.current = audioContext.createMediaStreamDestination();
       const destination = destinationRef.current;
       
       console.log("Attempting to get microphone stream...");
       
-      // Get microphone stream
       let microphoneStream: MediaStream;
       try {
         microphoneStream = await navigator.mediaDevices.getUserMedia({ 
@@ -202,7 +244,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         });
         console.log("Microphone stream obtained successfully");
         
-        // Connect microphone to destination
         const micSource = audioContext.createMediaStreamSource(microphoneStream);
         micSource.connect(destination);
         
@@ -215,13 +256,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         });
       }
       
-      // Get system audio stream
       console.log("Attempting to get system audio stream...");
       try {
         const systemStream = await navigator.mediaDevices.getDisplayMedia({
           video: false,
           audio: {
-            echoCancellation: false, // Disable untuk system audio agar lebih jelas
+            echoCancellation: false,
             noiseSuppression: false,
             autoGainControl: false,
             sampleRate: 48000,
@@ -231,11 +271,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         
         console.log("System audio stream obtained successfully");
         
-        // Connect system audio to destination
         const systemSource = audioContext.createMediaStreamSource(systemStream);
         systemSource.connect(destination);
         
-        // Handle system stream ending
         systemStream.getVideoTracks().forEach(track => track.stop());
         systemStream.getAudioTracks().forEach(track => {
           track.addEventListener('ended', () => {
@@ -251,7 +289,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         });
       }
       
-      // Return mixed stream
       const mixedStream = destination.stream;
       console.log("Mixed audio stream created with tracks:", mixedStream.getTracks().length);
       
@@ -260,7 +297,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     } catch (error) {
       console.error("Error creating mixed audio stream:", error);
       
-      // Fallback ke microphone saja
       try {
         const fallbackStream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
@@ -284,7 +320,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       const mixedStream = await createMixedAudioStream();
       
-      // Start audio recording dengan mixed stream
       mediaRecorderRef.current = new MediaRecorder(mixedStream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
           ? 'audio/webm;codecs=opus' 
@@ -302,7 +337,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
         
-        // Cleanup streams
         mixedStream.getTracks().forEach(track => track.stop());
         if (audioContextRef.current) {
           audioContextRef.current.close();
@@ -315,12 +349,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       isRecordingRef.current = true;
       onProcessingStart();
       
-      // Reset transcripts
-      setPermanentTranscript("");
-      setInterimTranscript("");
-      onTranscriptReady("");
-      
-      // Start speech recognition dengan mixed audio
       if (recognition) {
         console.log("Starting speech recognition for mixed audio...");
         try {
@@ -359,17 +387,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     isRecordingRef.current = false;
     setIsRecording(false);
     
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    
     if (recognition) {
       recognition.stop();
     }
     
+    if (mediaRecorderRef.current) {
+      console.log("MediaRecorder state before stop:", mediaRecorderRef.current.state);
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (error) {
+        console.error("Error stopping MediaRecorder:", error);
+      }
+    } else {
+      console.log("MediaRecorder instance is null or undefined");
+    }
+    
     setIsListening(false);
     
-    // Save transcript to localStorage
     if (permanentTranscript.trim()) {
       const transcriptRecord = {
         id: Date.now().toString(),
@@ -399,7 +433,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setAudioBlob(file);
       onProcessingStart();
       
-      // Simulate transcription process for uploaded file
       setTimeout(() => {
         const mockTranscript = "Ini adalah contoh transcript dari file audio yang diupload. Dalam implementasi nyata, file audio akan diproses melalui middleware untuk noise reduction dan kemudian dikirim ke API transcription yang lebih canggih seperti Whisper OpenAI atau Google Speech-to-Text.";
         setPermanentTranscript(mockTranscript);
