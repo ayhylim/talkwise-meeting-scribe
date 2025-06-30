@@ -381,51 +381,71 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
   };
 
-  const stopRecording = () => {
-    console.log("Stopping recording...");
-    
-    isRecordingRef.current = false;
-    setIsRecording(false);
-    
-    if (recognition) {
+const isStoppingRef = useRef(false);
+
+const stopRecording = () => {
+  if (isStoppingRef.current) {
+    console.log("Already stopping, ignoring duplicate stop call.");
+    return;
+  }
+  console.log("Stopping recording...");
+  isStoppingRef.current = true;
+
+  isRecordingRef.current = false;
+  setIsRecording(false);
+
+  if (recognition) {
+    try {
       recognition.stop();
+      console.log("Speech recognition stopped.");
+    } catch (error) {
+      console.error("Error stopping speech recognition:", error);
     }
-    
-    if (mediaRecorderRef.current) {
-      console.log("MediaRecorder state before stop:", mediaRecorderRef.current.state);
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (error) {
-        console.error("Error stopping MediaRecorder:", error);
-      }
-    } else {
-      console.log("MediaRecorder instance is null or undefined");
+  } else {
+    console.log("Recognition instance is null or undefined");
+  }
+
+  if (mediaRecorderRef.current) {
+    console.log("MediaRecorder state before stop:", mediaRecorderRef.current.state);
+    try {
+      mediaRecorderRef.current.stop();
+      console.log("MediaRecorder stopped.");
+    } catch (error) {
+      console.error("Error stopping MediaRecorder:", error);
     }
-    
-    setIsListening(false);
-    
-    if (permanentTranscript.trim()) {
-      const transcriptRecord = {
-        id: Date.now().toString(),
-        title: `Meeting ${new Date().toLocaleDateString()}`,
-        transcript: permanentTranscript.trim(),
-        summary: '',
-        createdAt: new Date(),
-        duration: '00:00:00',
-        language: selectedLanguage,
-        audioSource: 'mixed'
-      };
-      
-      const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
-      existingTranscripts.unshift(transcriptRecord);
-      localStorage.setItem('talkwise-transcripts', JSON.stringify(existingTranscripts));
-    }
-    
-    toast({
-      title: "Recording Stopped",
-      description: "Audio berhasil direkam dan transcript selesai",
-    });
-  };
+  } else {
+    console.log("MediaRecorder instance is null or undefined");
+  }
+
+  setIsListening(false);
+
+  if (permanentTranscript.trim()) {
+    const transcriptRecord = {
+      id: Date.now().toString(),
+      title: `Meeting ${new Date().toLocaleDateString()}`,
+      transcript: permanentTranscript.trim(),
+      summary: '',
+      createdAt: new Date(),
+      duration: '00:00:00',
+      language: selectedLanguage,
+      audioSource: 'mixed'
+    };
+
+    const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
+    existingTranscripts.unshift(transcriptRecord);
+    localStorage.setItem('talkwise-transcripts', JSON.stringify(existingTranscripts));
+  }
+
+  toast({
+    title: "Recording Stopped",
+    description: "Audio berhasil direkam dan transcript selesai",
+  });
+
+  // Reset stopping flag after a short delay to allow cleanup
+  setTimeout(() => {
+    isStoppingRef.current = false;
+  }, 1000);
+};
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
