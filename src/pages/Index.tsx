@@ -1,6 +1,6 @@
 import {Button} from "@/components/ui/button";
 import {Card} from "@/components/ui/card";
-import {Mic, FileText, Brain, Zap, Shield, Globe} from "lucide-react";
+import {Mic, FileText, Brain, Zap, Shield, Globe, Calendar} from "lucide-react";
 import {Link} from "react-router-dom";
 
 const Index = () => {
@@ -41,10 +41,16 @@ const Index = () => {
                                 Mulai Transcribe
                             </Button>
                         </Link>
-                        <Button size="lg" variant="outline" className="px-8 py-3">
+                        <Link to="/dashboard?schedule=true">
+                            <Button size="lg" className="gradient-primary text-white hover:opacity-90 px-8 py-3">
+                                <Calendar className="mr-2 h-5 w-5" />
+                                Schedule
+                            </Button>
+                        </Link>
+                        {/* <Button size="lg" variant="outline" className="px-8 py-3">
                             <FileText className="mr-2 h-5 w-5" />
                             Lihat Demo
-                        </Button>
+                        </Button> */}
                     </div>
                 </div>
             </section>
