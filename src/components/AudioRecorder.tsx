@@ -1,66 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback, MutableRefObject } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, Upload, Play, Pause, Square, Settings, Users } from "lucide-react";
+import { Upload, Play, Pause, Square, Settings, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  maxAlternatives: number;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
-  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-}
-
-interface SpeechRecognitionEvent extends Event {
-  readonly resultIndex: number;
-  readonly results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  readonly error: string;
-  readonly message: string;
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionResult {
-  readonly isFinal: boolean;
-  readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-}
-
-interface SpeechRecognitionAlternative {
-  readonly transcript: string;
-  readonly confidence: number;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: {
-      prototype: SpeechRecognition;
-      new (): SpeechRecognition;
-    };
-    webkitSpeechRecognition: {
-      prototype: SpeechRecognition;
-      new (): SpeechRecognition;
-    };
-  }
-}
 
 interface AudioRecorderProps {
   onTranscriptReady: (transcript: string) => void;
@@ -226,36 +171,41 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     try {
       audioContextRef.current = new AudioContext();
       const audioContext = audioContextRef.current;
-      
+
+      // Create gain node for microphone to increase sensitivity
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 1.5; // Increase gain by 1.5x, adjust as needed
+
       destinationRef.current = audioContext.createMediaStreamDestination();
       const destination = destinationRef.current;
-      
+
       console.log("Attempting to get microphone stream...");
-      
+
       let microphoneStream: MediaStream;
       try {
-        microphoneStream = await navigator.mediaDevices.getUserMedia({ 
+        microphoneStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-            sampleRate: 48000
-          } 
+            sampleRate: 48000,
+          },
         });
         console.log("Microphone stream obtained successfully");
-        
+
         const micSource = audioContext.createMediaStreamSource(microphoneStream);
-        micSource.connect(destination);
-        
+        micSource.connect(gainNode);
+        gainNode.connect(destination);
+
       } catch (micError) {
         console.warn("Microphone access failed:", micError);
         toast({
-          title: "Microphone Warning", 
+          title: "Microphone Warning",
           description: "Tidak dapat mengakses microphone, akan mencoba hanya system audio",
           variant: "destructive",
         });
       }
-      
+
       console.log("Attempting to get system audio stream...");
       try {
         const systemStream = await navigator.mediaDevices.getDisplayMedia({
@@ -265,22 +215,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             noiseSuppression: false,
             autoGainControl: false,
             sampleRate: 48000,
-            channelCount: 2
-          }
+            channelCount: 2,
+          },
         });
-        
+
         console.log("System audio stream obtained successfully");
-        
+
         const systemSource = audioContext.createMediaStreamSource(systemStream);
         systemSource.connect(destination);
-        
-        systemStream.getVideoTracks().forEach(track => track.stop());
-        systemStream.getAudioTracks().forEach(track => {
-          track.addEventListener('ended', () => {
+
+        systemStream.getVideoTracks().forEach((track) => track.stop());
+        systemStream.getAudioTracks().forEach((track) => {
+          track.addEventListener("ended", () => {
             console.log("System audio track ended");
           });
         });
-        
+
       } catch (systemError) {
         console.warn("System audio access failed:", systemError);
         toast({
@@ -288,22 +238,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           description: "Tidak dapat mengakses system audio, akan menggunakan microphone saja",
         });
       }
-      
+
       const mixedStream = destination.stream;
       console.log("Mixed audio stream created with tracks:", mixedStream.getTracks().length);
-      
+
       return mixedStream;
-      
+
     } catch (error) {
       console.error("Error creating mixed audio stream:", error);
-      
+
       try {
-        const fallbackStream = await navigator.mediaDevices.getUserMedia({ 
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-          } 
+          },
         });
         console.log("Using fallback microphone stream");
         return fallbackStream;
