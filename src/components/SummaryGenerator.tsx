@@ -28,37 +28,24 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
 
     setIsGenerating(true);
 
-    // Simulate AI processing delay
-    setTimeout(() => {
-      // Mock AI-generated summary
-      const mockSummary = `Berdasarkan analisis AI terhadap transcript meeting ini, berikut adalah ringkasan utama:
+    try {
+      const response = await fetch('http://localhost:5000/generate-summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transcript }),
+      });
 
-Meeting ini membahas ${transcript.split(' ').length > 50 ? 'beberapa topik penting' : 'topik utama'} dengan partisipasi aktif dari peserta. ${transcript.includes('project') || transcript.includes('proyek') ? 'Diskusi fokus pada pengembangan proyek' : 'Pembahasan mencakup berbagai aspek strategis'}.
+      if (!response.ok) {
+        throw new Error('Failed to generate summary');
+      }
 
-Poin-poin kunci yang diidentifikasi AI:
-- Komunikasi yang efektif antar tim
-- Koordinasi untuk langkah selanjutnya
-- Pentingnya follow-up yang terstruktur
+      const data = await response.json();
 
-AI telah menganalisis sentiment dan konteks percakapan untuk memberikan insights yang akurat.`;
-
-      const mockKeyPoints = [
-        "Pembahasan strategi pengembangan sistem AI",
-        "Koordinasi timeline dan milestone project",
-        "Diskusi tentang integrasi teknologi terbaru",
-        "Planning untuk fase implementasi selanjutnya"
-      ];
-
-      const mockActionItems = [
-        "Follow up dengan tim development minggu depan",
-        "Prepare dokumentasi teknis untuk review",
-        "Schedule meeting dengan stakeholder",
-        "Update progress report untuk management"
-      ];
-
-      setSummary(mockSummary);
-      setKeyPoints(mockKeyPoints);
-      setActionItems(mockActionItems);
+      setSummary(data.summary || '');
+      setKeyPoints(data.key_points || []);
+      setActionItems(data.action_items || []);
       setIsGenerating(false);
 
       // Save to localStorage
@@ -66,14 +53,14 @@ AI telah menganalisis sentiment dan konteks percakapan untuk memberikan insights
         id: Date.now().toString(),
         title: `Meeting Summary ${new Date().toLocaleDateString()}`,
         transcript: transcript,
-        summary: mockSummary,
+        summary: data.summary || '',
         createdAt: new Date(),
         duration: '00:00:00'
       };
 
       const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
       const updatedTranscripts = existingTranscripts.map((t: any) => 
-        t.transcript === transcript ? { ...t, summary: mockSummary } : t
+        t.transcript === transcript ? { ...t, summary: data.summary || '' } : t
       );
       
       if (!updatedTranscripts.some((t: any) => t.transcript === transcript)) {
@@ -86,7 +73,14 @@ AI telah menganalisis sentiment dan konteks percakapan untuk memberikan insights
         title: "Summary Generated!",
         description: "AI telah menganalisis dan membuat ringkasan meeting",
       });
-    }, 3000);
+    } catch (error) {
+      setIsGenerating(false);
+      toast({
+        title: "Error",
+        description: (error as Error).message || "Gagal membuat ringkasan",
+        variant: "destructive",
+      });
+    }
   };
 
   const copySummary = () => {

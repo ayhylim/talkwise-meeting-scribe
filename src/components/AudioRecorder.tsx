@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,39 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, Play, Pause, Square, Settings, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+// Add global declarations for SpeechRecognition types to fix TS errors
+declare global {
+  interface Window {
+    SpeechRecognition: typeof SpeechRecognition;
+    webkitSpeechRecognition: typeof SpeechRecognition;
+  }
+}
+
+type SpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onstart: () => void;
+  onend: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  start: () => void;
+  stop: () => void;
+};
+
+interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: Array<{
+    isFinal: boolean;
+    0: { transcript: string };
+  }>;
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string;
+}
 
 interface AudioRecorderProps {
   onTranscriptReady: (transcript: string) => void;
@@ -25,7 +58,17 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [interimTranscript, setInterimTranscript] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("id-ID");
   const [isListening, setIsListening] = useState(false);
-  
+
+  // New state for audio input devices and selected deviceId
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+
+  // New states for gain and audio constraints
+  const [gainValue, setGainValue] = useState(1.5);
+  const [echoCancellation, setEchoCancellation] = useState(true);
+  const [noiseSuppression, setNoiseSuppression] = useState(true);
+  const [autoGainControl, setAutoGainControl] = useState(true);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -64,19 +107,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       return null;
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognitionInstance = new SpeechRecognition();
-    
+    // Cast to any to avoid TS errors
+    const SpeechRecognitionClass: any = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognitionInstance = new SpeechRecognitionClass();
+
     recognitionInstance.continuous = true;
     recognitionInstance.interimResults = true;
     recognitionInstance.lang = selectedLanguage;
     recognitionInstance.maxAlternatives = 1;
-    
+
     if ('webkitSpeechRecognition' in window) {
-      // @ts-expect-error
-      recognitionInstance.webkitServiceType = 'search';
+      // Removed @ts-expect-error, kept comment for clarity
+      // recognitionInstance.webkitServiceType = 'search';
     }
-    
+
     recognitionInstance.onstart = () => {
       console.log("Speech recognition started successfully");
       setIsListening(true);
@@ -85,7 +129,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     recognitionInstance.onend = () => {
       console.log("Speech recognition ended");
       setIsListening(false);
-      
+
       if (isRecordingRef.current) {
         console.log("Restarting recognition...");
         setTimeout(() => {
@@ -94,22 +138,46 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               recognitionInstance.start();
             } catch (error) {
               console.log("Failed to restart recognition:", error);
+              // Retry with exponential backoff
+              let retryDelay = 500;
+              const maxRetries = 5;
+              let retries = 0;
+              const retryStart = () => {
+                if (retries < maxRetries && isRecordingRef.current) {
+                  try {
+                    recognitionInstance.start();
+                    console.log("Speech recognition restarted successfully");
+                  } catch (err) {
+                    retries++;
+                    retryDelay *= 2;
+                    console.log(`Retry ${retries} failed, retrying in ${retryDelay}ms`);
+                    setTimeout(retryStart, retryDelay);
+                  }
+                } else if (retries >= maxRetries) {
+                  toast({
+                    title: "Speech Recognition Error",
+                    description: "Gagal memulai ulang speech recognition setelah beberapa kali percobaan.",
+                    variant: "destructive",
+                  });
+                }
+              };
+              retryStart();
             }
           }
         }, 100);
       }
     };
-    
+
     recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
       console.log("Recognition result received:", event.results.length);
-      
+
       let newInterimTranscript = '';
       let newFinalText = '';
-      
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0].transcript;
-        
+
         if (result.isFinal) {
           console.log("Final result:", text);
           newFinalText += text + ' ';
@@ -118,24 +186,24 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           newInterimTranscript += text;
         }
       }
-      
+
       if (newFinalText) {
         const updatedPermanent = permanentTranscriptRef.current + newFinalText;
         permanentTranscriptRef.current = updatedPermanent;
         setPermanentTranscript(updatedPermanent);
         console.log("Updated permanent transcript:", updatedPermanent);
       }
-      
+
       setInterimTranscript(newInterimTranscript);
-      
+
       const fullTranscript = permanentTranscriptRef.current + newFinalText + newInterimTranscript;
       console.log("Sending transcript update:", fullTranscript);
       onTranscriptReady(fullTranscript);
     };
-    
+
     recognitionInstance.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
-      
+
       if (event.error === 'not-allowed') {
         toast({
           title: "Microphone Access Denied",
@@ -150,9 +218,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         console.log("No speech detected, continuing...");
       } else if (event.error === 'aborted') {
         console.log("Recognition aborted normally");
+      } else {
+        toast({
+          title: "Speech Recognition Error",
+          description: `Error: ${event.error}`,
+          variant: "destructive",
+        });
       }
     };
-    
+
     return recognitionInstance;
   }, [selectedLanguage, permanentTranscript, onTranscriptReady, toast]);
 
@@ -166,6 +240,49 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       }
     };
   }, [setupSpeechRecognition]);
+
+  // New effect to enumerate audio input devices and listen for device changes
+  useEffect(() => {
+    const updateAudioInputDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+        setAudioInputDevices(audioInputs);
+        if (!selectedDeviceId && audioInputs.length > 0) {
+          setSelectedDeviceId(audioInputs[0].deviceId);
+        }
+      } catch (error) {
+        console.error("Error enumerating devices:", error);
+      }
+    };
+
+    updateAudioInputDevices();
+
+    const handleDeviceChange = async () => {
+      await updateAudioInputDevices();
+      setTimeout(() => {
+        setAudioInputDevices((currentDevices) => {
+          if (selectedDeviceId) {
+            const deviceStillAvailable = currentDevices.some(device => device.deviceId === selectedDeviceId);
+            if (!deviceStillAvailable && currentDevices.length > 0) {
+              setSelectedDeviceId(currentDevices[0].deviceId);
+              toast({
+                title: "Audio Device Changed",
+                description: "Perangkat audio input berubah, menggunakan perangkat baru.",
+              });
+            }
+          }
+          return currentDevices;
+        });
+      }, 500);
+    };
+
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+    };
+  }, [selectedDeviceId, toast]);
 
   const createMixedAudioStream = async (): Promise<MediaStream> => {
     try {
@@ -185,6 +302,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       try {
         microphoneStream = await navigator.mediaDevices.getUserMedia({
           audio: {
+            deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
@@ -447,24 +565,104 @@ const stopRecording = () => {
             <span className="font-medium">Audio Settings</span>
           </div>
           
-          {/* Language Selection */}
-          <div>
-            <Label htmlFor="language-select" className="text-sm font-medium">
-              Bahasa Recognition
-            </Label>
-            <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-              <SelectTrigger className="w-full mt-1">
-                <SelectValue placeholder="Pilih bahasa" />
-              </SelectTrigger>
-              <SelectContent>
-                {languages.map((lang) => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* Language Selection */}
+      <div>
+        <Label htmlFor="language-select" className="text-sm font-medium">
+          Bahasa Recognition
+        </Label>
+        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+          <SelectTrigger className="w-full mt-1">
+            <SelectValue placeholder="Pilih bahasa" />
+          </SelectTrigger>
+          <SelectContent>
+            {languages.map((lang) => (
+              <SelectItem key={lang.code} value={lang.code}>
+                {lang.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Audio Input Device Selection */}
+      <div>
+        <Label htmlFor="audio-device-select" className="text-sm font-medium">
+          Pilih Perangkat Audio Input
+        </Label>
+        <Select
+          value={selectedDeviceId || ""}
+          onValueChange={(value) => setSelectedDeviceId(value)}
+          id="audio-device-select"
+        >
+          <SelectTrigger className="w-full mt-1">
+            <SelectValue placeholder="Pilih perangkat audio" />
+          </SelectTrigger>
+          <SelectContent>
+            {audioInputDevices.map((device) => (
+              <SelectItem key={device.deviceId} value={device.deviceId}>
+                {device.label || `Device ${device.deviceId}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Gain Control */}
+      <div>
+        <Label htmlFor="gain-range" className="text-sm font-medium">
+          Sensitivitas Mikrofon (Gain): {gainValue.toFixed(1)}x
+        </Label>
+        <input
+          type="range"
+          id="gain-range"
+          min="0.5"
+          max="5"
+          step="0.1"
+          value={gainValue}
+          onChange={(e) => setGainValue(parseFloat(e.target.value))}
+          className="w-full"
+        />
+      </div>
+
+      {/* Audio Constraints Toggles */}
+      <div className="space-y-2">
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="echoCancellation"
+            checked={echoCancellation}
+            onChange={() => setEchoCancellation(!echoCancellation)}
+            className="cursor-pointer"
+          />
+          <Label htmlFor="echoCancellation" className="cursor-pointer text-sm">
+            Echo Cancellation
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="noiseSuppression"
+            checked={noiseSuppression}
+            onChange={() => setNoiseSuppression(!noiseSuppression)}
+            className="cursor-pointer"
+          />
+          <Label htmlFor="noiseSuppression" className="cursor-pointer text-sm">
+            Noise Suppression
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="autoGainControl"
+            checked={autoGainControl}
+            onChange={() => setAutoGainControl(!autoGainControl)}
+            className="cursor-pointer"
+          />
+          <Label htmlFor="autoGainControl" className="cursor-pointer text-sm">
+            Auto Gain Control
+          </Label>
+        </div>
+      </div>
         </div>
       </Card>
 

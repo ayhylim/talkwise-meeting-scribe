@@ -334,6 +334,13 @@ def get_noise_reduction_settings():
         }
     })
 
+from generate_summary_endpoint import generate_summary
+from flask import request
+
+@app.route('/generate-summary', methods=['POST'])
+def generate_summary_route():
+    return generate_summary()
+
 if __name__ == '__main__':
     print("Starting Noise Cancellation API Server...")
     print("Available endpoints:")
@@ -341,6 +348,7 @@ if __name__ == '__main__':
     print("- POST /process-audio - Process complete audio file")
     print("- POST /process-stream - Process audio stream chunks")
     print("- GET /get-settings - Get available settings")
+    print("- POST /generate-summary - Generate AI summary from transcript")
     
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
     print("Server is running...")
