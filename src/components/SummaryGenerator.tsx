@@ -38,7 +38,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate summary');
+        throw new Error('-led to generate summary');
       }
 
       const data = await response.json();
@@ -177,7 +177,7 @@ ${transcript}`;
             <div className="flex justify-between items-center mb-3">
               <h3 className="font-semibold flex items-center">
                 <Brain className="h-4 w-4 mr-2 text-blue-600" />
-                AI Summary
+                Ringkasan Penjelasan
               </h3>
               <div className="flex space-x-2">
                 <Button variant="outline" size="sm" onClick={copySummary}>
@@ -195,9 +195,9 @@ ${transcript}`;
             </div>
           </Card>
 
-          {/* Key Points */}
+          {/* Poin-Poin */}
           <Card className="p-4">
-            <h3 className="font-semibold mb-3 text-green-700">Key Points</h3>
+            <h3 className="font-semibold mb-3 text-green-700">Poin-Poin</h3>
             <ul className="space-y-2">
               {keyPoints.map((point, index) => (
                 <li key={index} className="flex items-start">
