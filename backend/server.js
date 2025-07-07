@@ -2,15 +2,15 @@ import http from "http";
 import fetch from "node-fetch";
 
 const PORT = 3001;
-const GEMINI_API_KEY = "AIzaSyB5C8bQ9_yrVQwqCWXZmmaVBYaTXVjwlEY"; // pakai key kamu
+const GEMINI_API_KEY = ""; // Use The Key Here
 
 const server = http.createServer(async (req, res) => {
-    // Tambahkan header CORS ke SEMUA response
+    // Add header Cors for All responses
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // ✅ FIX PENTING: Tanggapi preflight OPTIONS
+    // ✅ IMPORTANT FIX: response preflight OPTIONS
     if (req.method === "OPTIONS") {
         res.writeHead(200);
         res.end();
