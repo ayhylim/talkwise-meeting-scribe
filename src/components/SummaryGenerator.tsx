@@ -9,12 +9,12 @@ interface SummaryGeneratorProps {
     transcript: string;
 }
 
-const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({transcript}) => {
-    const [summary, setSummary] = useState("");
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [keyPoints, setKeyPoints] = useState<string[]>([]);
-    const [actionItems, setActionItems] = useState<string[]>([]);
-    const {toast} = useToast();
+const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
+  const [summary, setSummary] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [keyPoints, setKeyPoints] = useState<string[]>([]);
+  const [actionItems, setActionItems] = useState<string[]>([]);
+  const { toast } = useToast();
 
     const generateSummary = async () => {
         if (!transcript.trim()) {
@@ -39,43 +39,33 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({transcript}) => {
                 throw new Error("-led to generate summary");
             }
 
-            const data = await response.json();
-            setSummary(data.summary || "Error: No Output Expected!");
-            // Tambahan parsing manual sederhana:
-            const lines = (data.summary || "")
-                .split("\\n")
-                .map(l => l.trim())
-                .filter(Boolean);
-            const parsedKeyPoints = lines.filter(line => line.startsWith("-") || line.startsWith("•"));
-            const parsedActions = lines.filter(line => line.startsWith("□") || line.toLowerCase().includes("action:"));
+      const data = await response.json();
 
-            setKeyPoints(parsedKeyPoints.map(p => p.replace(/^[-•]\s*/, "")));
-            setActionItems(parsedActions.map(a => a.replace(/^□\s*|action:\s*/i, "")));
+      setSummary(data.summary || '');
+      setKeyPoints(data.key_points || []);
+      setActionItems(data.action_items || []);
+      setIsGenerating(false);
 
-            setKeyPoints(data.key_points || []);
-            setActionItems(data.action_items || []);
-            setIsGenerating(false);
+      // Save to localStorage
+      const transcriptRecord = {
+        id: Date.now().toString(),
+        title: `Meeting Summary ${new Date().toLocaleDateString()}`,
+        transcript: transcript,
+        summary: data.summary || '',
+        createdAt: new Date(),
+        duration: '00:00:00'
+      };
 
-            // Save to localStorage
-            const transcriptRecord = {
-                id: Date.now().toString(),
-                title: `Meeting Summary ${new Date().toLocaleDateString()}`,
-                transcript: transcript,
-                summary: data.summary || "",
-                createdAt: new Date(),
-                duration: "00:00:00"
-            };
-
-            const existingTranscripts = JSON.parse(localStorage.getItem("talkwise-transcripts") || "[]");
-            const updatedTranscripts = existingTranscripts.map((t: any) =>
-                t.transcript === transcript ? {...t, summary: data.summary || ""} : t
-            );
-
-            if (!updatedTranscripts.some((t: any) => t.transcript === transcript)) {
-                updatedTranscripts.unshift(transcriptRecord);
-            }
-
-            localStorage.setItem("talkwise-transcripts", JSON.stringify(updatedTranscripts));
+      const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
+      const updatedTranscripts = existingTranscripts.map((t: any) => 
+        t.transcript === transcript ? { ...t, summary: data.summary || '' } : t
+      );
+      
+      if (!updatedTranscripts.some((t: any) => t.transcript === transcript)) {
+        updatedTranscripts.unshift(transcriptRecord);
+      }
+      
+      localStorage.setItem('talkwise-transcripts', JSON.stringify(updatedTranscripts));
 
             toast({
                 title: "Summary Generated!",
@@ -95,7 +85,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({transcript}) => {
         const fullSummary = `RINGKASAN MEETING (TalkWise AI)
 ${new Date().toLocaleDateString()}
 
-${summary}
+${title ? title + "\n\n" : ""}${summary}
 
 KEY POINTS:
 ${keyPoints.map(point => `• ${point}`).join("\n")}
@@ -114,7 +104,7 @@ ${actionItems.map(item => `□ ${item}`).join("\n")}`;
         const content = `RINGKASAN MEETING (TalkWise AI)
 Generated: ${new Date().toLocaleString()}
 
-SUMMARY:
+${title ? title + "\n\n" : ""}SUMMARY:
 ${summary}
 
 KEY POINTS:
