@@ -3,6 +3,7 @@ import {Button} from "@/components/ui/button";
 import {Card} from "@/components/ui/card";
 import {Brain, Copy, Download, Sparkles} from "lucide-react";
 import {useToast} from "@/hooks/use-toast";
+import Markdown from "markdown-to-jsx";
 
 interface SummaryGeneratorProps {
     transcript: string;
@@ -195,14 +196,40 @@ ${transcript}`;
                                 </Button>
                             </div>
                         </div>
-                        <div className="prose prose-sm max-w-none">
-                            <p className="text-slate-700 leading-relaxed whitespace-pre-line">{summary}</p>
+                        <div className="prose prose-sm max-w-none text-slate-700">
+                            <Markdown
+                                options={{
+                                    overrides: {
+                                        strong: {
+                                            props: {
+                                                className: "text-blue-800 font-semibold"
+                                            }
+                                        },
+                                        li: {
+                                            props: {
+                                                className: "mb-2 leading-relaxed"
+                                            }
+                                        },
+                                        ul: {
+                                            props: {
+                                                className: "list-disc pl-6"
+                                            }
+                                        },
+                                        p: {
+                                            props: {
+                                                className: "mb-4"
+                                            }
+                                        }
+                                    }
+                                }}
+                            >
+                                {summary}
+                            </Markdown>
                         </div>
                     </Card>
 
-                    {/* Poin-Poin */}
+                    {/* Key Points */}
                     <Card className="p-4">
-                        <h3 className="font-semibold mb-3 text-green-700">Poin-Poin</h3>
                         <ul className="space-y-2">
                             {keyPoints.map((point, index) => (
                                 <li key={index} className="flex items-start">
@@ -215,7 +242,6 @@ ${transcript}`;
 
                     {/* Action Items */}
                     <Card className="p-4">
-                        <h3 className="font-semibold mb-3 text-orange-700">Action Items</h3>
                         <ul className="space-y-2">
                             {actionItems.map((item, index) => (
                                 <li key={index} className="flex items-start">

@@ -25,16 +25,19 @@ const server = http.createServer(async (req, res) => {
                 const {transcript} = JSON.parse(body);
 
                 const prompt = `
-You are an AI assistant. Please generate:
-- A short summary.
-- Key points.
--Bullet point key ideas
-- if someone ask about your identity you can answer that you're an ai summary agent. named "TalkWise AI"
-- please maintain about language flexibility. adjust your output according to the language in this transcript
-- Action items (if any) from this transcript:
+You are an AI assistant. Please generate a structured JSON object with the following fields:
 
+{
+  "summary": "short summary...",
+  "key_points": ["point 1", "point 2", and others],
+  "action_items": ["action 1", "action 2", and others],
+  "identity": "optional if user asks",
+  "language": "auto detect language and follow it"
+}
+
+Here's the transcript to analyze:
 ${transcript}
-                `;
+`;
 
                 const geminiRes = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -49,10 +52,19 @@ ${transcript}
 
                 const data = await geminiRes.json();
                 console.log("📤 Gemini Response JSON:", JSON.stringify(data, null, 2));
-                const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                console.log("📤 Raw Gemini Output:", rawText);
+
+                let parsed = {};
+                try {
+                    parsed = JSON.parse(rawText);
+                } catch (e) {
+                    console.error("❌ Failed to parse Gemini response as JSON:", e);
+                    parsed = {summary: rawText}; // fallback
+                }
 
                 res.writeHead(200, {"Content-Type": "application/json"});
-                res.end(JSON.stringify({summary: text}));
+                res.end(JSON.stringify(parsed));
             } catch (err) {
                 res.writeHead(500, {"Content-Type": "application/json"});
                 res.end(JSON.stringify({error: "Gagal meringkas"}));
