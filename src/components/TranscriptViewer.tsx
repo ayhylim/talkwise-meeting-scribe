@@ -8,9 +8,10 @@ import {useToast} from "@/hooks/use-toast";
 interface TranscriptViewerProps {
     transcript: string;
     isProcessing: boolean;
+    onTranscriptUpdate?: (updated: string) => void;
 }
 
-const TranscriptViewer: React.FC<TranscriptViewerProps> = ({transcript, isProcessing}) => {
+const TranscriptViewer: React.FC<TranscriptViewerProps> = ({transcript, isProcessing, onTranscriptUpdate}) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [isEditing, setIsEditing] = React.useState(false);
@@ -85,6 +86,13 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({transcript, isProces
     };
 
     const saveEdit = () => {
+        console.log("Saving edited transcript:", editedTranscript); // debug
+        if (onTranscriptUpdate) {
+            onTranscriptUpdate(editedTranscript);
+            console.log("onTranscriptUpdate called");
+        } else {
+            console.warn("onTranscriptUpdate not defined!");
+        }
         setIsEditing(false);
         toast({
             title: "Saved!",

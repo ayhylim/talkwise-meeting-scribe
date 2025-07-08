@@ -2,7 +2,7 @@ import http from "http";
 import fetch from "node-fetch";
 
 const PORT = 3001;
-const GEMINI_API_KEY = ""; // Use The Key Here
+const GEMINI_API_KEY = "AIzaSyB5C8bQ9_yrVQwqCWXZmmaVBYaTXVjwlEY"; // Use The Key Here
 
 const server = http.createServer(async (req, res) => {
     // Add header Cors for All responses
@@ -28,13 +28,16 @@ const server = http.createServer(async (req, res) => {
 You are an AI assistant. Please generate:
 - A short summary.
 - Key points.
+-Bullet point key ideas
+- if someone ask about your identity you can answer that you're an ai summary agent. named "TalkWise AI"
+- please maintain about language flexibility. adjust your output according to the language in this transcript
 - Action items (if any) from this transcript:
 
 ${transcript}
                 `;
 
                 const geminiRes = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
                     {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},
@@ -45,6 +48,7 @@ ${transcript}
                 );
 
                 const data = await geminiRes.json();
+                console.log("📤 Gemini Response JSON:", JSON.stringify(data, null, 2));
                 const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
                 res.writeHead(200, {"Content-Type": "application/json"});

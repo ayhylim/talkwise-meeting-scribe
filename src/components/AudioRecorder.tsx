@@ -127,8 +127,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({onTranscriptReady, onProce
             console.log("Speech recognition ended");
             setIsListening(false);
 
-            if (isRecordingRef.current) {
+            // Don't restart if it's stopped
+            if (isRecordingRef.current && !isStoppingRef.current) {
                 console.log("Restarting recognition...");
+
                 setTimeout(() => {
                     if (isRecordingRef.current) {
                         try {
@@ -450,6 +452,32 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({onTranscriptReady, onProce
 
     const isStoppingRef = useRef(false);
 
+    // Stop recording when recording state button clicked
+    const stopAllTracks = () => {
+        console.log("Stopping all media tracks...");
+
+        // Stop media recorder tracks
+        if (mediaRecorderRef.current && mediaRecorderRef.current.stream) {
+            mediaRecorderRef.current.stream.getTracks().forEach(track => {
+                track.stop();
+            });
+        }
+
+        // Stop AudioContext
+        if (audioContextRef.current) {
+            audioContextRef.current.close();
+            audioContextRef.current = null;
+        }
+
+        // Stop destination stream if available
+        if (destinationRef.current && destinationRef.current.stream) {
+            destinationRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+
+        // Clear references
+        destinationRef.current = null;
+    };
+
     const stopRecording = () => {
         if (isStoppingRef.current) {
             console.log("Already stopping, ignoring duplicate stop call.");
@@ -484,6 +512,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({onTranscriptReady, onProce
             console.log("MediaRecorder instance is null or undefined");
         }
 
+        stopAllTracks();
         setIsListening(false);
 
         if (permanentTranscript.trim()) {

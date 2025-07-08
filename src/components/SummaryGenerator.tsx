@@ -39,8 +39,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({transcript}) => {
             }
 
             const data = await response.json();
-
-            setSummary(data.summary || "");
+            setSummary(data.summary || "Error: No Output Expected!");
             // Tambahan parsing manual sederhana:
             const lines = (data.summary || "")
                 .split("\\n")

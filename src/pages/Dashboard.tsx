@@ -152,14 +152,14 @@ ${transcript.summary}`;
                     <Link to="/transcribe">
                         <Button className="gradient-primary text-white">Transcribe Baru</Button>
                     </Link>
-                    <Button
+                    {/* <Button
                         variant="outline"
                         className="flex items-center space-x-2"
                         onClick={() => setShowSchedule(!showSchedule)}
                     >
                         <CalendarIcon className="h-5 w-5" />
                         <span>Jadwal</span>
-                    </Button>
+                    </Button> */}
                 </div>
             </nav>
 
