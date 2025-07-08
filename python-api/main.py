@@ -8,6 +8,9 @@ import io
 import base64
 import tempfile
 import os
+from generate_summary_endpoint import (
+    generate_summary
+)
 from scipy.signal import butter, filtfilt, savgol_filter
 from scipy.ndimage import median_filter
 import threading

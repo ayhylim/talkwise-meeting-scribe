@@ -10,6 +10,7 @@ interface SummaryGeneratorProps {
 }
 
 const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
+  const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [keyPoints, setKeyPoints] = useState<string[]>([]);
@@ -43,6 +44,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
 
       const data = await response.json();
 
+      setTitle(data.title || '');
       setSummary(data.summary || '');
       setKeyPoints(data.key_points || []);
       setActionItems(data.action_items || []);
@@ -51,7 +53,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
       // Save to localStorage
       const transcriptRecord = {
         id: Date.now().toString(),
-        title: `Meeting Summary ${new Date().toLocaleDateString()}`,
+        title: data.title || `Meeting Summary ${new Date().toLocaleDateString()}`,
         transcript: transcript,
         summary: data.summary || '',
         createdAt: new Date(),
@@ -60,7 +62,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
 
       const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
       const updatedTranscripts = existingTranscripts.map((t: any) => 
-        t.transcript === transcript ? { ...t, summary: data.summary || '' } : t
+        t.transcript === transcript ? { ...t, summary: data.summary || '', title: data.title || '' } : t
       );
       
       if (!updatedTranscripts.some((t: any) => t.transcript === transcript)) {
@@ -87,7 +89,7 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
     const fullSummary = `RINGKASAN MEETING (TalkWise AI)
 ${new Date().toLocaleDateString()}
 
-${summary}
+${title ? title + "\n\n" : ""}${summary}
 
 KEY POINTS:
 ${keyPoints.map(point => `• ${point}`).join('\n')}
@@ -106,7 +108,7 @@ ${actionItems.map(item => `□ ${item}`).join('\n')}`;
     const content = `RINGKASAN MEETING (TalkWise AI)
 Generated: ${new Date().toLocaleString()}
 
-SUMMARY:
+${title ? title + "\n\n" : ""}SUMMARY:
 ${summary}
 
 KEY POINTS:
@@ -172,6 +174,13 @@ ${transcript}`;
       {/* Summary Results */}
       {summary && (
         <div className="space-y-4">
+          {/* Title */}
+          {title && (
+            <Card className="p-4">
+              <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+            </Card>
+          )}
+
           {/* Summary Text */}
           <Card className="p-4">
             <div className="flex justify-between items-center mb-3">
