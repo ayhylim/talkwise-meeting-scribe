@@ -247,8 +247,7 @@ ${transcript.summary}`;
                                                             {transcript.title}
                                                         </h3>
                                                         <p className="text-slate-600 text-sm mb-2">
-                                                            {transcript.createdAt.toLocaleDateString()} •{" "}
-                                                            {transcript.duration}
+                                                            {transcript.createdAt.toLocaleDateString()}
                                                         </p>
                                                         <p className="text-slate-700 line-clamp-2">
                                                             {transcript.transcript.substring(0, 200)}...
