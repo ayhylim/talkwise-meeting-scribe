@@ -25,17 +25,29 @@ const server = http.createServer(async (req, res) => {
                 const {transcript} = JSON.parse(body);
 
                 const prompt = `
-You are an AI assistant. Please generate a structured JSON object with the following fields:
+You are an AI assistant named TalkWise AI. 
+Based on the following transcript, generate a summary in JSON format.
+
+⚠️ IMPORTANT RULE:
+You must detect and follow the language used in the transcript. 
+If the transcript is in Bahasa Indonesia, you MUST respond in Bahasa Indonesia. 
+If in English, use English. You may not switch or translate.
+
+Make sure:
+- The language of the summary matches the language used in the transcript. You may not switch or translate.
+- You DO NOT wrap the response in markdown or code blocks.
+- The style is friendly and human-like, not robotic.
+
+Respond with this structure:
 
 {
-  "summary": "short summary...",
-  "key_points": ["point 1", "point 2", and others],
-  "action_items": ["action 1", "action 2", and others],
-  "identity": "optional if user asks",
-  "language": "auto detect language and follow it"
+  "title": "...",
+  "summary": "...",
+  "key_points": ["..."],
+  "action_items": ["..."]
 }
 
-Here's the transcript to analyze:
+Transcript:
 ${transcript}
 `;
 
@@ -57,7 +69,11 @@ ${transcript}
 
                 let parsed = {};
                 try {
-                    parsed = JSON.parse(rawText);
+                    // Remove Markdown wrapper like ```json\n...\n```
+                    const jsonStart = rawText.indexOf("{");
+                    const jsonEnd = rawText.lastIndexOf("}") + 1;
+                    const jsonCandidate = rawText.slice(jsonStart, jsonEnd);
+                    parsed = JSON.parse(jsonCandidate);
                 } catch (e) {
                     console.error("❌ Failed to parse Gemini response as JSON:", e);
                     parsed = {summary: rawText}; // fallback

@@ -9,12 +9,13 @@ interface SummaryGeneratorProps {
     transcript: string;
 }
 
-const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
-  const [summary, setSummary] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [keyPoints, setKeyPoints] = useState<string[]>([]);
-  const [actionItems, setActionItems] = useState<string[]>([]);
-  const { toast } = useToast();
+const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({transcript}) => {
+    const [summary, setSummary] = useState("");
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [keyPoints, setKeyPoints] = useState<string[]>([]);
+    const [title, setTitle] = useState("");
+    const [actionItems, setActionItems] = useState<string[]>([]);
+    const {toast} = useToast();
 
     const generateSummary = async () => {
         if (!transcript.trim()) {
@@ -39,33 +40,34 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({ transcript }) => {
                 throw new Error("-led to generate summary");
             }
 
-      const data = await response.json();
+            const data = await response.json();
 
-      setSummary(data.summary || '');
-      setKeyPoints(data.key_points || []);
-      setActionItems(data.action_items || []);
-      setIsGenerating(false);
+            setSummary(data.summary || "");
+            setTitle(data.title || "");
+            setKeyPoints(data.key_points || []);
+            setActionItems(data.action_items || []);
+            setIsGenerating(false);
 
-      // Save to localStorage
-      const transcriptRecord = {
-        id: Date.now().toString(),
-        title: `Meeting Summary ${new Date().toLocaleDateString()}`,
-        transcript: transcript,
-        summary: data.summary || '',
-        createdAt: new Date(),
-        duration: '00:00:00'
-      };
+            // Save to localStorage
+            const transcriptRecord = {
+                id: Date.now().toString(),
+                title: `Meeting Summary ${new Date().toLocaleDateString()}`,
+                transcript: transcript,
+                summary: data.summary || "",
+                createdAt: new Date(),
+                duration: "00:00:00"
+            };
 
-      const existingTranscripts = JSON.parse(localStorage.getItem('talkwise-transcripts') || '[]');
-      const updatedTranscripts = existingTranscripts.map((t: any) => 
-        t.transcript === transcript ? { ...t, summary: data.summary || '' } : t
-      );
-      
-      if (!updatedTranscripts.some((t: any) => t.transcript === transcript)) {
-        updatedTranscripts.unshift(transcriptRecord);
-      }
-      
-      localStorage.setItem('talkwise-transcripts', JSON.stringify(updatedTranscripts));
+            const existingTranscripts = JSON.parse(localStorage.getItem("talkwise-transcripts") || "[]");
+            const updatedTranscripts = existingTranscripts.map((t: any) =>
+                t.transcript === transcript ? {...t, summary: data.summary || ""} : t
+            );
+
+            if (!updatedTranscripts.some((t: any) => t.transcript === transcript)) {
+                updatedTranscripts.unshift(transcriptRecord);
+            }
+
+            localStorage.setItem("talkwise-transcripts", JSON.stringify(updatedTranscripts));
 
             toast({
                 title: "Summary Generated!",
@@ -186,6 +188,7 @@ ${transcript}`;
                                 </Button>
                             </div>
                         </div>
+                        {title && <h2 className="text-2xl font-bold text-blue-800 mb-4">{title}</h2>}
                         <div className="prose prose-sm max-w-none text-slate-700">
                             <Markdown
                                 options={{
@@ -220,6 +223,7 @@ ${transcript}`;
 
                     {/* Key Points */}
                     <Card className="p-4">
+                        <h3 className="font-semibold mb-3 text-green-700">Key Points</h3>
                         <ul className="space-y-2">
                             {keyPoints.map((point, index) => (
                                 <li key={index} className="flex items-start">
@@ -232,6 +236,7 @@ ${transcript}`;
 
                     {/* Action Items */}
                     <Card className="p-4">
+                        <h3 className="font-semibold mb-3 text-orange-700">Action Items</h3>
                         <ul className="space-y-2">
                             {actionItems.map((item, index) => (
                                 <li key={index} className="flex items-start">
