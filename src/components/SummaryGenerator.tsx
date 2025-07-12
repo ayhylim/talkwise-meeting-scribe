@@ -30,14 +30,14 @@ const SummaryGenerator: React.FC<SummaryGeneratorProps> = ({transcript}) => {
         setIsGenerating(true);
 
         try {
-            const response = await fetch("http://localhost:3001/summarize", {
+            const response = await fetch("https://talkwise-backend.up.railway.app/summarize", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({transcript})
             });
 
             if (!response.ok) {
-                throw new Error("-led to generate summary");
+                throw new Error("-Error: No Output Expected");
             }
 
             const data = await response.json();
@@ -240,7 +240,12 @@ ${transcript}`;
                         <ul className="space-y-2">
                             {actionItems.map((item, index) => (
                                 <li key={index} className="flex items-start">
-                                    <div className="w-4 h-4 border-2 border-orange-500 rounded mt-1 mr-3 flex-shrink-0"></div>
+                                    <input
+                                        type="checkbox"
+                                        className="w-4 h-4 border-2 border-orange-500 rounded mt-1 mr-3 flex-shrink-0"
+                                        name="check-action-items"
+                                        id="check-action-items"
+                                    />
                                     <span className="text-slate-700">{item}</span>
                                 </li>
                             ))}

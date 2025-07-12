@@ -1,16 +1,16 @@
 import http from "http";
 import fetch from "node-fetch";
+import "dotenv/config";
 
-const PORT = 3001;
-const GEMINI_API_KEY = "AIzaSyB5C8bQ9_yrVQwqCWXZmmaVBYaTXVjwlEY"; // Use The Key Here
+const PORT = process.env.PORT || 3001;
 
 const server = http.createServer(async (req, res) => {
-    // Add header Cors for All responses
+    // Add CORS headers for all responses
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // ✅ IMPORTANT FIX: response preflight OPTIONS
+    // ✅ Handle CORS preflight OPTIONS
     if (req.method === "OPTIONS") {
         res.writeHead(200);
         res.end();
@@ -22,7 +22,7 @@ const server = http.createServer(async (req, res) => {
         req.on("data", chunk => (body += chunk));
         req.on("end", async () => {
             try {
-                const {transcript} = JSON.parse(body);
+                const { transcript } = JSON.parse(body);
 
                 const prompt = `
 You are an AI assistant named TalkWise AI. 
@@ -30,8 +30,11 @@ Based on the following transcript, generate a summary in JSON format.
 
 ⚠️ IMPORTANT RULE:
 You must detect and follow the language used in the transcript. 
-If the transcript is in Bahasa Indonesia, you MUST respond in Bahasa Indonesia. 
-If in English, use English. You may not switch or translate.
+YOU MAY NOT SWITCH OR TRANSLATE YOUR OUTPUT!
+WHEN YOU SUMMARIZE YOU HAVE TO USE ENGLISH LANGUAGE
+
+
+
 
 Make sure:
 - The language of the summary matches the language used in the transcript. You may not switch or translate.
@@ -52,12 +55,12 @@ ${transcript}
 `;
 
                 const geminiRes = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
                     {
                         method: "POST",
-                        headers: {"Content-Type": "application/json"},
+                        headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            contents: [{role: "user", parts: [{text: prompt}]}]
+                            contents: [{ role: "user", parts: [{ text: prompt }] }]
                         })
                     }
                 );
@@ -76,22 +79,22 @@ ${transcript}
                     parsed = JSON.parse(jsonCandidate);
                 } catch (e) {
                     console.error("❌ Failed to parse Gemini response as JSON:", e);
-                    parsed = {summary: rawText}; // fallback
+                    parsed = { summary: rawText }; // fallback
                 }
 
-                res.writeHead(200, {"Content-Type": "application/json"});
+                res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify(parsed));
             } catch (err) {
-                res.writeHead(500, {"Content-Type": "application/json"});
-                res.end(JSON.stringify({error: "Gagal meringkas"}));
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Failed to summarize" }));
             }
         });
     } else {
-        res.writeHead(404, {"Content-Type": "application/json"});
-        res.end(JSON.stringify({error: "Endpoint tidak ditemukan"}));
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Endpoint not found" }));
     }
 });
 
 server.listen(PORT, () => {
-    console.log(`✅ Talkwise Vanilla backend running at http://localhost:${PORT}`);
+    console.log(`✅ TalkWise Vanilla backend running at http://localhost:${PORT}`);
 });
